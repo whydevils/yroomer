@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>yroomer</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <header class="sidebar-header">
+      <div class="logo-group">
+        <img src="favicon.svg" class="logo-icon" alt="" />
+        <div class="logo-text">
+          <span class="logo">yroomer</span>
+          <span class="logo-sub">plan your room :)</span>
+        </div>
+      </div>
+      <button id="btn-toggle-sidebar" class="btn-toggle-sidebar" title="Hide sidebar">‹</button>
+    </header>
+
+    <!-- SELECTED ITEM CONTROLS -->
+    <section class="sidebar-section section-selected-panel hidden" id="section-selected">
+      <h2 class="section-title">Selected</h2>
+      <p id="selected-label" class="selected-name">—</p>
+
+      <!-- Furniture controls -->
+      <div id="furniture-controls">
+        <label>Name
+          <input type="text" id="selected-name-input" placeholder="Name" />
+        </label>
+        <div class="input-row">
+          <label>W <span class="unit">cm</span>
+            <input type="number" id="selected-w-input" min="10" max="1000" />
+          </label>
+          <label>D <span class="unit">cm</span>
+            <input type="number" id="selected-d-input" min="10" max="1000" />
+          </label>
+        </div>
+        <div class="input-row">
+          <label>X <span class="unit">cm</span>
+            <input type="number" id="selected-x-input" />
+          </label>
+          <label>Y <span class="unit">cm</span>
+            <input type="number" id="selected-y-input" />
+          </label>
+        </div>
+        <label>Category
+          <select id="selected-cat-input">
+            <option value="bed">Bed</option>
+            <option value="sofa">Seating</option>
+            <option value="table">Table</option>
+            <option value="wardrobe">Storage</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <div class="color-row">
+          <label class="color-label" for="selected-color-input">Color</label>
+          <input type="color" id="selected-color-input" />
+          <button class="btn btn-outline btn-sm btn-icon-sm" id="btn-reset-color" title="Reset to category color">↺</button>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-outline btn-sm" id="btn-rotate" title="Rotate 90° (R)">↻ Rotate</button>
+          <button class="btn btn-outline btn-sm btn-danger" id="btn-delete" title="Delete (Del)">✕ Delete</button>
+        </div>
+      </div>
+
+      <!-- Opening controls -->
+      <div id="opening-controls-selected" class="hidden">
+        <label>Type
+          <select id="opening-type-select">
+            <option value="door">Door</option>
+            <option value="window">Window</option>
+          </select>
+        </label>
+        <div class="input-row">
+          <label>Width <span class="unit">cm</span>
+            <input type="number" id="opening-width-selected" min="40" max="400" />
+          </label>
+          <label>Offset <span class="unit">cm</span>
+            <input type="number" id="opening-offset-selected" min="0" />
+          </label>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-outline btn-sm" id="btn-flip-door" title="Move hinge to other side">⟲ Hinge</button>
+          <button class="btn btn-outline btn-sm" id="btn-swing-door" title="Toggle inward/outward swing">⤴ Swing</button>
+          <button class="btn btn-outline btn-sm btn-danger" id="btn-delete-opening" title="Delete opening">✕ Delete</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROOM SETUP -->
+    <section class="sidebar-section" id="section-room">
+      <details class="section-details" id="details-room" open>
+      <summary class="section-title">Room</summary>
+
+      <div class="room-mode-tabs">
+        <button class="tab-btn" id="tab-draw" title="Draw freeform polygon">Draw</button>
+        <button class="tab-btn active" id="tab-rect" title="Set rectangular room">Rectangle</button>
+      </div>
+
+      <div id="panel-draw" class="hidden">
+        <button class="btn btn-outline btn-sm" id="btn-undo-vertex">Undo last point</button>
+        <button class="btn btn-outline btn-sm btn-danger" id="btn-clear-room">Clear room</button>
+      </div>
+
+      <div id="panel-rect">
+        <div class="input-row">
+          <label>Width <span class="unit">cm</span>
+            <input type="number" id="rect-width" value="500" min="50" max="2000" />
+          </label>
+          <label>Depth <span class="unit">cm</span>
+            <input type="number" id="rect-depth" value="400" min="50" max="2000" />
+          </label>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-make-rect">Create room</button>
+      </div>
+
+      </details>
+    </section>
+
+    <!-- OPENINGS -->
+    <section class="sidebar-section" id="section-openings">
+      <details class="section-details" id="details-openings">
+      <summary class="section-title">Doors &amp; Windows</summary>
+      <div id="opening-controls">
+        <div class="action-row">
+          <button class="btn btn-outline btn-sm" id="btn-add-door">+ Door</button>
+          <button class="btn btn-outline btn-sm" id="btn-add-window">+ Window</button>
+        </div>
+        <label style="margin-top: 10px;">Width <span class="unit">cm</span>
+          <input type="number" id="opening-width" value="90" min="40" max="400" />
+        </label>
+      </div>
+      </details>
+    </section>
+
+    <!-- FURNITURE -->
+    <section class="sidebar-section" id="section-furniture">
+      <details class="section-details" id="details-furniture">
+      <summary class="section-title">Furniture</summary>
+
+      <div id="furniture-catalog">
+        <!-- Generated by JS -->
+      </div>
+
+      <div class="divider"></div>
+      <details class="collapsible">
+        <summary>Add custom piece</summary>
+        <div class="custom-form">
+          <label>Name
+            <input type="text" id="custom-name" placeholder="e.g. Piano" />
+          </label>
+          <div class="input-row">
+            <label>Width <span class="unit">cm</span>
+              <input type="number" id="custom-width" value="100" min="10" max="1000" />
+            </label>
+            <label>Depth <span class="unit">cm</span>
+              <input type="number" id="custom-depth" value="60" min="10" max="1000" />
+            </label>
+          </div>
+          <label>Category
+            <select id="custom-category">
+              <option value="bed">Bed</option>
+              <option value="sofa">Seating</option>
+              <option value="table">Table</option>
+              <option value="wardrobe">Storage</option>
+              <option value="other" selected>Other</option>
+            </select>
+          </label>
+          <button class="btn btn-primary btn-sm" id="btn-add-custom">Add to room</button>
+        </div>
+      </details>
+      </details>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="sidebar-section" id="section-settings">
+      <details class="section-details">
+      <summary class="section-title">Settings</summary>
+      <label class="toggle-label">
+        <span>Snap to grid</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-grid" checked />
+          <span class="toggle-track"></span>
+        </label>
+      </label>
+      <label class="toggle-label">
+        <span>Show measurements</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-measurements" checked />
+          <span class="toggle-track"></span>
+        </label>
+      </label>
+      <label class="inline-label">Grid step <span class="unit">cm</span>
+        <input type="number" id="grid-size" value="10" min="1" max="100" />
+      </label>
+      <div class="action-row">
+        <button class="btn btn-outline btn-sm" id="btn-zoom-reset">Reset zoom</button>
+      </div>
+      </details>
+    </section>
+
+    <!-- EXPORT / IMPORT -->
+    <section class="sidebar-section" id="section-io">
+      <details class="section-details">
+        <summary class="section-title">Export / Import</summary>
+        <div class="action-col" style="margin-top: 8px;">
+          <button class="btn btn-primary btn-sm" id="btn-export">↓ Export JSON</button>
+          <label class="btn btn-outline btn-sm file-btn">
+            ↑ Import JSON
+            <input type="file" id="import-file" accept=".json" class="hidden" />
+          </label>
+        </div>
+      </details>
+      <p class="io-hint">Save your layout</p>
+    </section>
+    <!-- SIDEBAR FOOTER -->
+    <footer class="sidebar-footer">
+      <button class="btn-info" id="btn-about" title="About yroomer">
+        <span class="btn-info-icon">i</span>
+        About
+      </button>
+    </footer>
+  </aside>
+
+  <!-- ABOUT OVERLAY -->
+  <div class="about-overlay hidden" id="about-overlay" role="dialog" aria-modal="true" aria-label="About yroomer">
+    <div class="about-card">
+      <button class="about-close" id="btn-about-close" aria-label="Close">✕</button>
+
+      <div class="about-logo">
+        <img src="favicon.svg" alt="" class="about-logo-icon" />
+        <span class="about-logo-name">yroomer</span>
+      </div>
+      <p class="about-tagline">A lightweight, browser-based room planner.</p>
+
+      <section class="about-section">
+        <h3>How to use</h3>
+        <ol class="about-steps">
+          <li><strong>Create a room</strong> — use the <em>Rectangle</em> tab for a quick room, or <em>Draw</em> to click-place vertices for any shape. Close the polygon by clicking the first vertex.</li>
+          <li><strong>Add furniture</strong> — click any item in the Furniture catalog. Drag it to position, use the edge handles to resize, or press <kbd>R</kbd> to rotate.</li>
+          <li><strong>Doors &amp; windows</strong> — arm <em>+ Door</em> or <em>+ Window</em>, then click on a wall. Click the placed opening to select and adjust it; drag to reposition it.</li>
+          <li><strong>Save your work</strong> — export the layout as JSON via <em>Export / Import</em>, and reload it later with Import.</li>
+        </ol>
+      </section>
+
+      <section class="about-section">
+        <h3>Keyboard shortcuts</h3>
+        <dl class="about-keys">
+          <div><dt><kbd>R</kbd></dt><dd>Rotate selected furniture 90°</dd></div>
+          <div><dt><kbd>Del</kbd> / <kbd>⌫</kbd></dt><dd>Delete selected item</dd></div>
+          <div><dt><kbd>↑ ↓ ← →</kbd></dt><dd>Move selected item (one grid step)</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>Deselect / cancel placement mode</dd></div>
+          <div><dt>Scroll</dt><dd>Zoom in / out</dd></div>
+          <div><dt>Right-drag</dt><dd>Pan the canvas</dd></div>
+        </dl>
+      </section>
+
+      <section class="about-section">
+        <h3>Technology</h3>
+        <p>yroomer runs <strong>entirely in your browser</strong> — no server, no account, no data ever leaves your device. It is built with plain HTML, CSS, and vanilla JavaScript; no frameworks or build tools. The canvas is rendered with the HTML5 Canvas 2D API. It works offline once loaded.</p>
+      </section>
+
+      <section class="about-section about-meta">
+        <div class="about-links">
+          <a href="https://github.com/whydevils/yyroomer" target="_blank" rel="noopener" class="about-link">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            Source code
+          </a>
+          <a href="https://whydevils.com" target="_blank" rel="noopener" class="about-link">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7.5" fill="none" stroke="currentColor" stroke-width="1"/><path d="M8 .5C5.5 3 4 5.5 4 8s1.5 5 4 7.5M8 .5C10.5 3 12 5.5 12 8s-1.5 5-4 7.5M.5 8h15" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+            whydevils.com
+          </a>
+        </div>
+        <p class="about-credit">Made by whydevils</p>
+      </section>
+    </div>
+  </div>
+
+  <!-- CANVAS AREA -->
+  <main id="canvas-wrapper">
+    <button id="btn-show-sidebar" class="btn-show-sidebar hidden" title="Show sidebar">›</button>
+    <canvas id="room-canvas"></canvas>
+    <div id="canvas-hint" class="canvas-hint">Draw your room — click the sidebar "Room" section to start.</div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
