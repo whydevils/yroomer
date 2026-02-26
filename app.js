@@ -41,18 +41,18 @@ const DEFAULT_FURNITURE = [
   { category: 'sofa',     name: 'Sofa',             width: 220, depth: 90  },
   { category: 'sofa',     name: 'Armchair',         width: 90,  depth: 85  },
   { category: 'sofa',     name: 'Chair',            width: 50,  depth: 50  },
-  { category: 'sofa',     name: 'Corner Sofa',      width: 250, depth: 180 },
   { category: 'table',    name: 'Dining Table',     width: 120, depth: 80  },
   { category: 'table',    name: 'Coffee Table',     width: 110, depth: 60  },
-  { category: 'table',    name: 'Round Table',      width: 100, depth: 100 },
+  { category: 'table',    name: 'Round Table',      width: 120, depth: 120, shape: 'ellipse' },
+  { category: 'table',    name: 'Oval Table',       width: 180, depth: 110, shape: 'ellipse' },
   { category: 'table',    name: 'Desk',             width: 140, depth: 70  },
-  { category: 'table',    name: 'Corner Desk',      width: 160, depth: 120 },
   { category: 'wardrobe', name: 'Wardrobe',         width: 120, depth: 60  },
   { category: 'wardrobe', name: 'Bookshelf',        width: 80,  depth: 30  },
   { category: 'wardrobe', name: 'Chest of Drawers', width: 80,  depth: 50  },
   { category: 'other',    name: 'Bathtub',          width: 170, depth: 75  },
   { category: 'other',    name: 'Toilet',           width: 40,  depth: 65  },
   { category: 'other',    name: 'Washing Machine',  width: 60,  depth: 60  },
+  { category: 'other',    name: 'Heater',           width: 80,  depth: 15  },
 ];
 
 const WALL_WIDTH = 6;   // px at scale=1 (visual; actual thickness = WALL_WIDTH px always)
@@ -77,7 +77,7 @@ let state = {
   furniture: [],       // {id, category, name, width, depth, x, y, rotation}
 
   // Interaction
-  mode: 'draw',        // 'draw' | 'rect' | 'place-opening' | 'normal'
+  mode: 'draw',        // 'draw' | 'rect' | 'place-opening' | 'normal' | 'draw-furniture'
   selectedId: null,
 
   // Drag
@@ -115,12 +115,100 @@ let state = {
 
   // Measurements
   showMeasurements: true,
+  showOverlap: true,
 
   // Opening placement
   openingType: 'door',
   openingWidth: 90,
   openingArmed: false,  // User has clicked "+ Door" or "+ Window"
+
+  // Undo/Redo
+  undoStack: [],
+  redoStack: [],
+  _lastUndoAction: null,
+  _lastUndoTime: 0,
+  _preActionSnapshot: null,
+
+  // Multi-select
+  selectedIds: new Set(),
+  _multiDragStart: null,
+
+  // Polygon furniture drawing
+  drawingFurniturePoints: [],
 };
+
+// ============================================================
+// UNDO / REDO
+// ============================================================
+
+function captureSnapshot() {
+  return {
+    furniture: JSON.parse(JSON.stringify(state.furniture)),
+    vertices:  state.vertices.map(v => ({ ...v })),
+    openings:  JSON.parse(JSON.stringify(state.openings)),
+  };
+}
+
+function recordAction(actionType, snap) {
+  const now = Date.now();
+  const GROUP_MS = 1000;
+  if (['move-key', 'rotate-key'].includes(actionType) &&
+      actionType === state._lastUndoAction &&
+      now - state._lastUndoTime < GROUP_MS) {
+    state._lastUndoTime = now;
+    return;
+  }
+  const snapshot = (snap !== undefined && snap !== null) ? snap : captureSnapshot();
+  state.undoStack.push({ actionType, snapshot });
+  if (state.undoStack.length > 50) state.undoStack.shift();
+  state.redoStack = [];
+  state._lastUndoAction = actionType;
+  state._lastUndoTime = now;
+  updateUndoRedoButtons();
+}
+
+function restoreSnapshot(snap) {
+  state.furniture  = snap.furniture;
+  state.vertices   = snap.vertices;
+  state.openings   = snap.openings;
+  state.roomClosed = snap.vertices.length >= 3;
+}
+
+function undo() {
+  if (!state.undoStack.length) return;
+  state.redoStack.push(captureSnapshot());
+  restoreSnapshot(state.undoStack.pop().snapshot);
+  state.selectedId = null;
+  state.selectedOpeningIndex = -1;
+  state.selectedIds = new Set();
+  updateUndoRedoButtons();
+  // DOM may not be ready yet on first call — guard
+  if (typeof sectionSelected !== 'undefined' && sectionSelected) {
+    sectionSelected.classList.add('hidden');
+  }
+  draw();
+}
+
+function redo() {
+  if (!state.redoStack.length) return;
+  state.undoStack.push({ actionType: 'redo', snapshot: captureSnapshot() });
+  restoreSnapshot(state.redoStack.pop());
+  state.selectedId = null;
+  state.selectedOpeningIndex = -1;
+  state.selectedIds = new Set();
+  updateUndoRedoButtons();
+  if (typeof sectionSelected !== 'undefined' && sectionSelected) {
+    sectionSelected.classList.add('hidden');
+  }
+  draw();
+}
+
+function updateUndoRedoButtons() {
+  const btnUndo = document.getElementById('btn-undo');
+  const btnRedo = document.getElementById('btn-redo');
+  if (btnUndo) btnUndo.disabled = state.undoStack.length === 0;
+  if (btnRedo) btnRedo.disabled = state.redoStack.length === 0;
+}
 
 // ============================================================
 // DOM REFS
@@ -165,6 +253,7 @@ const btnDelete       = document.getElementById('btn-delete');
 
 const toggleGrid         = document.getElementById('toggle-grid');
 const toggleMeasurements = document.getElementById('toggle-measurements');
+const toggleOverlap      = document.getElementById('toggle-overlap');
 const gridSizeEl         = document.getElementById('grid-size');
 const btnZoomReset       = document.getElementById('btn-zoom-reset');
 
@@ -176,6 +265,8 @@ const sidebar = document.getElementById('sidebar');
 const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
 const btnShowSidebar = document.getElementById('btn-show-sidebar');
 const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+const multiSelectPanel = document.getElementById('multi-select-panel');
+const multiSelectCount = document.getElementById('multi-select-count');
 
 // ============================================================
 // UTILS
@@ -233,16 +324,36 @@ function pointInPolygon(px, py, vertices) {
   return inside;
 }
 
-/** Get the 4 corners of a furniture item in room cm, accounting for rotation */
+/** Get the corners of a furniture item in room cm, accounting for rotation.
+ *  For polygon shapes returns the actual polygon vertices.
+ *  For ellipses returns a 12-point approximation for SAT overlap testing. */
 function furnitureCorners(f) {
-  const cx = f.x + f.width / 2;
-  const cy = f.y + f.depth / 2;
-  const hw = f.width / 2;
-  const hd = f.depth / 2;
+  const cx  = f.x + f.width / 2;
+  const cy  = f.y + f.depth / 2;
   const rad = (f.rotation * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const local = [[-hw, -hd],[hw, -hd],[hw, hd],[-hw, hd]];
+
+  if (f.shape === 'polygon' && f.points) {
+    return f.points.map(p => ({
+      x: cx + p.x * cos - p.y * sin,
+      y: cy + p.x * sin + p.y * cos,
+    }));
+  }
+
+  if (f.shape === 'ellipse') {
+    const hw = f.width / 2, hd = f.depth / 2;
+    return Array.from({ length: 12 }, (_, i) => {
+      const a  = (i / 12) * Math.PI * 2;
+      const lx = hw * Math.cos(a);
+      const ly = hd * Math.sin(a);
+      return { x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos };
+    });
+  }
+
+  // Default: rect
+  const hw = f.width / 2, hd = f.depth / 2;
+  const local = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]];
   return local.map(([lx, ly]) => ({
     x: cx + lx * cos - ly * sin,
     y: cy + lx * sin + ly * cos,
@@ -280,6 +391,7 @@ function project(corners, axis) {
 }
 
 function anyOverlap(target, excludeId) {
+  if (!state.showOverlap) return false;
   return state.furniture.some(f => {
     if (f.id === excludeId) return false;
     return furnitureOverlap(target, f);
@@ -368,6 +480,11 @@ function draw() {
   // Cursor preview in draw mode — shown even before the first vertex is placed
   if (!state.roomClosed && state.mode === 'draw' && state._cursorRoom) {
     drawDrawingPreview();
+  }
+
+  // Polygon furniture drawing preview (drawn in screen space like drawDrawingPreview)
+  if (state.mode === 'draw-furniture') {
+    drawFurnitureDrawingPreview();
   }
 
   if (state.vertices.length === 0) return;
@@ -596,8 +713,9 @@ function drawWallWithOpenings(a, b, openings, wallW, openingIndices = []) {
 
 function drawFurniture() {
   for (const f of state.furniture) {
-    const isSelected = f.id === state.selectedId;
-    const overlap    = anyOverlap(f, f.id);
+    const isSelected      = f.id === state.selectedId;
+    const isMultiSelected = state.selectedIds.has(f.id);
+    const overlap         = anyOverlap(f, f.id);
 
     ctx.save();
     ctx.globalAlpha = 0.7;
@@ -619,44 +737,68 @@ function drawFurniture() {
     const cat = CATEGORIES[f.category] || CATEGORIES.other;
     const baseColor = f.color || cat.color;
     ctx.fillStyle = overlap ? COLORS.overlapFill : baseColor + 'CC';
-    roundRect(ctx, -hw, -hd, f.width, f.depth, r);
+    makeFurniturePath(ctx, f, hw, hd, r);
     ctx.fill();
 
     ctx.shadowColor = 'transparent';
 
     // Border
-    ctx.strokeStyle = overlap ? COLORS.overlapBorder : (isSelected ? COLORS.textDark : baseColor);
-    ctx.lineWidth = (isSelected ? 2.5 : 1.5) / (state.zoom * SCALE_DEFAULT);
-    roundRect(ctx, -hw, -hd, f.width, f.depth, r);
+    if (isMultiSelected && !isSelected) {
+      ctx.strokeStyle = COLORS.primary;
+      ctx.lineWidth   = 2 / (state.zoom * SCALE_DEFAULT);
+      ctx.setLineDash([4 / (state.zoom * SCALE_DEFAULT), 4 / (state.zoom * SCALE_DEFAULT)]);
+    } else {
+      ctx.strokeStyle = overlap ? COLORS.overlapBorder : (isSelected ? COLORS.textDark : baseColor);
+      ctx.lineWidth   = (isSelected ? 2.5 : 1.5) / (state.zoom * SCALE_DEFAULT);
+      ctx.setLineDash([]);
+    }
+    makeFurniturePath(ctx, f, hw, hd, r);
     ctx.stroke();
+    ctx.setLineDash([]);
 
-    // Label (counter-rotate so text stays horizontal)
-    const fontSize = Math.max(6, Math.min(9, f.width * 0.07));
-    // Clip label to box
+    // Label — counter-rotate to keep readable; auto-rotate 90° for narrow shapes
     ctx.save();
-    roundRect(ctx, -hw, -hd, f.width, f.depth, r);
+    makeFurniturePath(ctx, f, hw, hd, r);
     ctx.clip();
-    // Counter-rotate for text — after this, drawing coords are in furniture-local space.
     ctx.rotate(-(f.rotation * Math.PI) / 180);
-    // Compute available horizontal span for text in the counter-rotated (local) frame.
+
+    // Compute available span along each axis in the counter-rotated (world-aligned) frame.
+    // availW = horizontal width of the rotated shape at y=0; availH = vertical height at x=0.
     const cosA = Math.abs(Math.cos(f.rotation * Math.PI / 180));
     const sinA = Math.abs(Math.sin(f.rotation * Math.PI / 180));
-    let availW;
-    if (sinA < 1e-6)      availW = f.width;
-    else if (cosA < 1e-6) availW = f.depth;
-    else                  availW = Math.min(hw / cosA, hd / sinA) * 2;
-    const textMaxW = availW * 0.88; // slight inner margin
-    ctx.fillStyle = overlap ? COLORS.overlapBorder : COLORS.textDark;
-    ctx.font = `500 ${fontSize}px ${FONTS.body}`;
+    let availW, availH;
+    if (sinA < 1e-6) {
+      availW = f.width;  availH = f.depth;
+    } else if (cosA < 1e-6) {
+      availW = f.depth;  availH = f.width;
+    } else {
+      availW = Math.min(hw / cosA, hd / sinA) * 2;
+      availH = Math.min(hd / cosA, hw / sinA) * 2;
+    }
+
+    // Rotate label 90° when the shape is substantially taller than it is wide
+    const rotateLabelBy90 = availH > availW * 1.5;
+    if (rotateLabelBy90) ctx.rotate(Math.PI / 2);
+
+    const spanW   = (rotateLabelBy90 ? availH : availW) * 0.88;
+    const spanH   =  rotateLabelBy90 ? availW : availH;
+    const fontSize = Math.max(6, Math.min(9, (rotateLabelBy90 ? availH : availW) * 0.07));
+
+    ctx.fillStyle    = overlap ? COLORS.overlapBorder : COLORS.textDark;
+    ctx.font         = `500 ${fontSize}px ${FONTS.body}`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
-    const nameLines = wrapText(ctx, f.name, textMaxW);
-    const lineH = fontSize * 1.25;
-    const dimSize = 6; // fixed size for all furniture
-    const hasDim = state.showMeasurements;
-    const totalH = nameLines.length * lineH + (hasDim ? dimSize * 1.4 : 0);
+
+    const nameLines = wrapText(ctx, f.name, spanW);
+    const lineH     = fontSize * 1.25;
+    const dimSize   = 6;
+    const hasDim    = state.showMeasurements;
+    // Cap lines so they don't overflow the available height
+    const maxLines  = Math.max(1, Math.floor(spanH * 0.88 / lineH));
+    const visLines  = nameLines.slice(0, maxLines);
+    const totalH    = visLines.length * lineH + (hasDim ? dimSize * 1.4 : 0);
     let yOff = -totalH / 2 + lineH / 2;
-    for (const ln of nameLines) {
+    for (const ln of visLines) {
       ctx.fillText(ln, 0, yOff);
       yOff += lineH;
     }
@@ -669,26 +811,14 @@ function drawFurniture() {
     }
     ctx.restore();
 
-    // Resize handles (edge midpoints)
-    if (isSelected) {
+    // Resize handles (edge midpoints) — only shown for single selection
+    if (isSelected && state.selectedIds.size <= 1) {
       const hSize = 6 / (state.zoom * SCALE_DEFAULT);
       ctx.fillStyle = COLORS.primary;
-      // East (right edge midpoint)
-      ctx.beginPath();
-      ctx.arc(hw, 0, hSize, 0, Math.PI * 2);
-      ctx.fill();
-      // West (left edge midpoint)
-      ctx.beginPath();
-      ctx.arc(-hw, 0, hSize, 0, Math.PI * 2);
-      ctx.fill();
-      // South (bottom edge midpoint)
-      ctx.beginPath();
-      ctx.arc(0, hd, hSize, 0, Math.PI * 2);
-      ctx.fill();
-      // North (top edge midpoint)
-      ctx.beginPath();
-      ctx.arc(0, -hd, hSize, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(hw,   0, hSize, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-hw,  0, hSize, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,   hd, hSize, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0,  -hd, hSize, 0, Math.PI * 2); ctx.fill();
     }
 
     ctx.restore();
@@ -771,6 +901,55 @@ function drawDrawingPreview() {
       ctx.fillStyle = COLORS.primary;
       ctx.fillText(label, mx, my);
     }
+  }
+
+  ctx.restore();
+}
+
+function drawFurnitureDrawingPreview() {
+  const pts = state.drawingFurniturePoints;
+  const cur = state._cursorRoom;
+  if (!cur && pts.length === 0) return;
+
+  ctx.save();
+
+  if (pts.length > 0) {
+    // Edges between placed points
+    ctx.beginPath();
+    const p0 = roomToScreen(pts[0].x, pts[0].y);
+    ctx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < pts.length; i++) {
+      const p = roomToScreen(pts[i].x, pts[i].y);
+      ctx.lineTo(p.x, p.y);
+    }
+    // Preview edge to cursor
+    if (cur) {
+      const cs = roomToScreen(cur.x, cur.y);
+      ctx.lineTo(cs.x, cs.y);
+    }
+    ctx.strokeStyle = COLORS.primary;
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Vertex dots
+    for (let i = 0; i < pts.length; i++) {
+      const p = roomToScreen(pts[i].x, pts[i].y);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = i === 0 ? COLORS.firstVertex : COLORS.primary;
+      ctx.fill();
+    }
+  }
+
+  // Cursor dot
+  if (cur) {
+    const cs = roomToScreen(cur.x, cur.y);
+    ctx.beginPath();
+    ctx.arc(cs.x, cs.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.primary;
+    ctx.fill();
   }
 
   ctx.restore();
@@ -866,6 +1045,20 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+/** Build the clipping/fill path for a furniture item (translated to local origin). */
+function makeFurniturePath(ctx, f, hw, hd, r) {
+  if (f.shape === 'ellipse') {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, hw, hd, 0, 0, Math.PI * 2);
+  } else if (f.shape === 'polygon' && f.points && f.points.length >= 3) {
+    ctx.beginPath();
+    f.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+  } else {
+    roundRect(ctx, -hw, -hd, f.width, f.depth, r);
+  }
+}
+
 // ============================================================
 // CATALOG UI
 // ============================================================
@@ -897,7 +1090,7 @@ function buildCatalog() {
         <span class="catalog-item-name">${item.name}</span>
         <span class="catalog-item-size">${item.width}×${item.depth}</span>
       `;
-      el.addEventListener('click', () => addFurnitureToRoom(item.category, item.name, item.width, item.depth));
+      el.addEventListener('click', () => addFurnitureToRoom(item.category, item.name, item.width, item.depth, item.shape || 'rect'));
       list.appendChild(el);
     }
 
@@ -907,7 +1100,7 @@ function buildCatalog() {
   }
 }
 
-function addFurnitureToRoom(category, name, width, depth) {
+function addFurnitureToRoom(category, name, width, depth, shape = 'rect') {
   if (!state.roomClosed) {
     alert('Please draw and close a room first.');
     return;
@@ -918,7 +1111,8 @@ function addFurnitureToRoom(category, name, width, depth) {
   cx = Math.round(cx / state.vertices.length - width / 2);
   cy = Math.round(cy / state.vertices.length - depth / 2);
 
-  const f = { id: uid(), category, name, width, depth, x: snap(cx, state.gridSize), y: snap(cy, state.gridSize), rotation: 0 };
+  recordAction('add-furniture');
+  const f = { id: uid(), category, name, width, depth, x: snap(cx, state.gridSize), y: snap(cy, state.gridSize), rotation: 0, shape };
   state.furniture.push(f);
   selectFurniture(f.id);
   draw();
@@ -930,39 +1124,60 @@ function addFurnitureToRoom(category, name, width, depth) {
 
 function selectFurniture(id) {
   state.selectedId = id;
+  state.selectedIds = new Set([id]);
   state.selectedOpeningIndex = -1;
   sidebar.scrollTop = 0;
-  const f = state.furniture.find(f => f.id === id);
-  if (f) {
+  updateSelectionPanel();
+  draw();
+}
+
+function updateSelectionPanel() {
+  if (state.selectedIds.size > 1) {
     sectionSelected.classList.remove('hidden');
-    selectedLabel.textContent = f.name;
-    furnitureControls.classList.remove('hidden');
+    selectedLabel.textContent = `${state.selectedIds.size} items`;
+    furnitureControls.classList.add('hidden');
     openingControlsSelected.classList.add('hidden');
-    populateFurnitureInputs(f);
+    multiSelectPanel.classList.remove('hidden');
+    if (multiSelectCount) multiSelectCount.textContent = `${state.selectedIds.size} items selected`;
+  } else if (state.selectedId) {
+    const f = state.furniture.find(f => f.id === state.selectedId);
+    if (f) {
+      sectionSelected.classList.remove('hidden');
+      selectedLabel.textContent = f.name;
+      furnitureControls.classList.remove('hidden');
+      openingControlsSelected.classList.add('hidden');
+      multiSelectPanel.classList.add('hidden');
+      populateFurnitureInputs(f);
+    } else {
+      sectionSelected.classList.add('hidden');
+      state.selectedId = null;
+    }
+  } else if (state.selectedOpeningIndex >= 0) {
+    const op = state.openings[state.selectedOpeningIndex];
+    if (op) {
+      sectionSelected.classList.remove('hidden');
+      selectedLabel.textContent = (op.type === 'door' ? '🚪 ' : '🪟 ') + (op.type.charAt(0).toUpperCase() + op.type.slice(1));
+      furnitureControls.classList.add('hidden');
+      openingControlsSelected.classList.remove('hidden');
+      multiSelectPanel.classList.add('hidden');
+      openingTypeSelect.value = op.type;
+      openingWidthSelected.value = op.width;
+      openingOffsetSelected.value = Math.round(op.offset);
+      btnFlipDoor.style.display  = op.type === 'door' ? 'inline-flex' : 'none';
+      btnSwingDoor.style.display = op.type === 'door' ? 'inline-flex' : 'none';
+    }
   } else {
     sectionSelected.classList.add('hidden');
-    state.selectedId = null;
+    if (multiSelectPanel) multiSelectPanel.classList.add('hidden');
   }
-  draw();
 }
 
 function selectOpening(oi) {
   state.selectedOpeningIndex = oi;
   state.selectedId = null;
+  state.selectedIds = new Set();
   sidebar.scrollTop = 0;
-  const op = state.openings[oi];
-  if (op) {
-    sectionSelected.classList.remove('hidden');
-    selectedLabel.textContent = (op.type === 'door' ? '🚪 ' : '🪟 ') + (op.type.charAt(0).toUpperCase() + op.type.slice(1));
-    furnitureControls.classList.add('hidden');
-    openingControlsSelected.classList.remove('hidden');
-    // Populate inputs
-    openingTypeSelect.value = op.type;
-    openingWidthSelected.value = op.width;
-    openingOffsetSelected.value = Math.round(op.offset);
-    btnFlipDoor.style.display = op.type === 'door' ? 'inline-flex' : 'none';
-    btnSwingDoor.style.display = op.type === 'door' ? 'inline-flex' : 'none';
-  }
+  updateSelectionPanel();
   draw();
 }
 
@@ -973,7 +1188,9 @@ function deselectAllFurniture() {
 function deselectAll() {
   state.selectedId = null;
   state.selectedOpeningIndex = -1;
+  state.selectedIds = new Set();
   sectionSelected.classList.add('hidden');
+  if (multiSelectPanel) multiSelectPanel.classList.add('hidden');
   draw();
 }
 
@@ -984,14 +1201,21 @@ function deselectAll() {
 function furnitureAt(rx, ry) {
   // Reverse order so top-most is picked first
   for (let i = state.furniture.length - 1; i >= 0; i--) {
-    const f = state.furniture[i];
+    const f  = state.furniture[i];
     const cx = f.x + f.width / 2;
     const cy = f.y + f.depth / 2;
     const dx = rx - cx, dy = ry - cy;
     const rad = -(f.rotation * Math.PI) / 180;
     const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
     const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
-    if (Math.abs(lx) <= f.width / 2 && Math.abs(ly) <= f.depth / 2) return f;
+
+    if (f.shape === 'ellipse') {
+      if ((lx / (f.width / 2)) ** 2 + (ly / (f.depth / 2)) ** 2 <= 1) return f;
+    } else if (f.shape === 'polygon' && f.points) {
+      if (pointInPolygon(lx, ly, f.points)) return f;
+    } else {
+      if (Math.abs(lx) <= f.width / 2 && Math.abs(ly) <= f.depth / 2) return f;
+    }
   }
   return null;
 }
@@ -1001,7 +1225,7 @@ function furnitureAt(rx, ry) {
  * Returns handle name ('e', 'w', 'n', 's') or null.
  */
 function resizeHandleAt(rx, ry) {
-  if (!state.selectedId) return null;
+  if (!state.selectedId || state.selectedIds.size > 1) return null;
   const f = state.furniture.find(f => f.id === state.selectedId);
   if (!f) return null;
 
@@ -1149,6 +1373,12 @@ function onPointerMove(e) {
     draw();
   }
 
+  // Draw-furniture polygon cursor preview
+  if (state.mode === 'draw-furniture') {
+    state._cursorRoom = { x: snap(room.x, state.gridSize), y: snap(room.y, state.gridSize) };
+    draw();
+  }
+
   // Vertex dragging
   if (state.dragVertexIndex >= 0) {
     state.vertices[state.dragVertexIndex] = { x: snap(room.x, state.gridSize), y: snap(room.y, state.gridSize) };
@@ -1212,8 +1442,35 @@ function onPointerMove(e) {
       f.depth = newDepth;
       f.x = newX;
       f.y = newY;
+
+      // Scale polygon points proportionally
+      if (f.shape === 'polygon' && f.points && startData.points) {
+        if (state.resizeHandle === 'e' || state.resizeHandle === 'w') {
+          const scaleX = newWidth / startData.width;
+          f.points = startData.points.map(p => ({ x: p.x * scaleX, y: p.y }));
+        } else {
+          const scaleY = newDepth / startData.depth;
+          f.points = startData.points.map(p => ({ x: p.x, y: p.y * scaleY }));
+        }
+      }
+
       draw();
     }
+    return;
+  }
+
+  // Multi-select drag — move all selected items by the same delta
+  if (state.dragging && state.dragFurnitureId && state._multiDragStart && state.selectedIds.size > 1) {
+    const dx = room.x - state._multiDragStart.roomX;
+    const dy = room.y - state._multiDragStart.roomY;
+    for (const item of state._multiDragStart.items) {
+      const fi = state.furniture.find(f => f.id === item.id);
+      if (fi) {
+        fi.x = snap(item.x + dx, state.gridSize);
+        fi.y = snap(item.y + dy, state.gridSize);
+      }
+    }
+    draw();
     return;
   }
 
@@ -1298,6 +1555,23 @@ function onPointerDown(e) {
   const pos  = getCanvasPos(e);
   const room = screenToRoom(pos.x, pos.y);
 
+  // --- Draw-furniture polygon mode ---
+  if (state.mode === 'draw-furniture') {
+    const snapped = { x: snap(room.x, state.gridSize), y: snap(room.y, state.gridSize) };
+    const pts = state.drawingFurniturePoints;
+    if (pts.length >= 3) {
+      const first = roomToScreen(pts[0].x, pts[0].y);
+      const dx = pos.x - first.x, dy = pos.y - first.y;
+      if (Math.sqrt(dx * dx + dy * dy) < CLOSE_RADIUS) {
+        closeFurniturePolygon();
+        return;
+      }
+    }
+    pts.push(snapped);
+    draw();
+    return;
+  }
+
   // --- Drawing mode ---
   if (!state.roomClosed && state.mode === 'draw') {
     const verts = state.vertices;
@@ -1306,6 +1580,7 @@ function onPointerDown(e) {
       const first = roomToScreen(verts[0].x, verts[0].y);
       const dx = pos.x - first.x, dy = pos.y - first.y;
       if (Math.sqrt(dx * dx + dy * dy) < CLOSE_RADIUS) {
+        recordAction('room-edit');
         state.roomClosed = true;
         hint.classList.add('hidden');
         setRoomSectionState(true);
@@ -1314,6 +1589,7 @@ function onPointerDown(e) {
         return;
       }
     }
+    recordAction('room-edit');
     const snapped = { x: snap(room.x, state.gridSize), y: snap(room.y, state.gridSize) };
     state.vertices.push(snapped);
     draw();
@@ -1330,6 +1606,7 @@ function onPointerDown(e) {
         selectOpening(oi);
       }
       // Start dragging in both modes
+      state._preActionSnapshot = captureSnapshot();
       const op = state.openings[oi];
       const wall = getWalls()[op.wall];
       if (wall) {
@@ -1349,6 +1626,7 @@ function onPointerDown(e) {
   if (state.mode === 'place-opening' && state.roomClosed) {
     const closest = closestWall(room.x, room.y);
     if (closest && closest.dist < 30 / (state.zoom * SCALE_DEFAULT)) {
+      recordAction('add-opening');
       state.openings.push({
         type:   state.openingType,
         wall:   closest.wallIndex,
@@ -1372,6 +1650,7 @@ function onPointerDown(e) {
     const vi = vertexAt(room.x, room.y);
     if (vi >= 0) {
       deselectAll();
+      state._preActionSnapshot = captureSnapshot();
       state.dragVertexIndex = vi;
       canvas.className = 'cursor-grabbing';
       return;
@@ -1382,9 +1661,16 @@ function onPointerDown(e) {
     if (handle) {
       const f = state.furniture.find(f => f.id === state.selectedId);
       if (f) {
+        state._preActionSnapshot = captureSnapshot();
         state.resizing = true;
         state.resizeHandle = handle;
-        state.resizeStart = { roomX: room.x, roomY: room.y, width: f.width, depth: f.depth, x: f.x, y: f.y, rotation: f.rotation };
+        state.resizeStart = {
+          roomX: room.x, roomY: room.y,
+          width: f.width, depth: f.depth,
+          x: f.x, y: f.y,
+          rotation: f.rotation,
+          points: (f.shape === 'polygon' && f.points) ? JSON.parse(JSON.stringify(f.points)) : null,
+        };
         canvas.className = 'cursor-grabbing';
         return;
       }
@@ -1392,11 +1678,52 @@ function onPointerDown(e) {
 
     const f = furnitureAt(room.x, room.y);
     if (f) {
-      selectFurniture(f.id);
+      // Shift+click: toggle in multi-select
+      if (e.shiftKey) {
+        if (state.selectedIds.has(f.id)) {
+          state.selectedIds.delete(f.id);
+          if (state.selectedId === f.id) {
+            const remaining = [...state.selectedIds];
+            state.selectedId = remaining.length ? remaining[remaining.length - 1] : null;
+          }
+        } else {
+          state.selectedIds.add(f.id);
+          state.selectedId = f.id;
+          state.selectedOpeningIndex = -1;
+        }
+        updateSelectionPanel();
+        draw();
+        return;
+      }
+
+      // Regular click: single-select, UNLESS clicking an item already in a multi-select
+      // (in that case keep the group intact so the drag moves all items)
+      if (!state.selectedIds.has(f.id)) {
+        selectFurniture(f.id);
+      } else {
+        state.selectedId = f.id;
+      }
+
+      // Setup drag
+      state._preActionSnapshot = captureSnapshot();
       state.dragging = true;
       state.dragFurnitureId = f.id;
       state.dragOffsetX = room.x - f.x;
       state.dragOffsetY = room.y - f.y;
+
+      // Multi-drag: record start positions for all selected items
+      if (state.selectedIds.size > 1) {
+        state._multiDragStart = {
+          items: state.furniture
+            .filter(fi => state.selectedIds.has(fi.id))
+            .map(fi => ({ id: fi.id, x: fi.x, y: fi.y })),
+          roomX: room.x,
+          roomY: room.y,
+        };
+      } else {
+        state._multiDragStart = null;
+      }
+
       canvas.className = 'cursor-grabbing';
       return;
     }
@@ -1416,10 +1743,14 @@ function onPointerDown(e) {
 
 function onPointerUp(_e) {
   if (state.dragVertexIndex >= 0) {
+    recordAction('room-edit', state._preActionSnapshot);
+    state._preActionSnapshot = null;
     state.dragVertexIndex = -1;
     draw();
   }
   if (state.resizing) {
+    recordAction('resize', state._preActionSnapshot);
+    state._preActionSnapshot = null;
     state.resizing = false;
     state.resizeHandle = null;
     state.resizeStart = null;
@@ -1427,17 +1758,17 @@ function onPointerUp(_e) {
     draw();
   }
   if (state.dragging && state.dragFurnitureId) {
-    const f = state.furniture.find(f => f.id === state.dragFurnitureId);
-    if (f && anyOverlap(f, f.id)) {
-      // Snap back — not ideal without history, just highlight for now
-      // (Full undo is out of scope)
-    }
+    recordAction('move', state._preActionSnapshot);
+    state._preActionSnapshot = null;
     state.dragging        = false;
     state.dragFurnitureId = null;
+    state._multiDragStart = null;
     canvas.className      = 'cursor-move';
     draw();
   }
   if (state.dragOpeningIndex >= 0) {
+    recordAction('move', state._preActionSnapshot);
+    state._preActionSnapshot = null;
     state.dragOpeningIndex = -1;
     state.dragOpeningOffsetDelta = 0;
     draw();
@@ -1452,9 +1783,7 @@ function onPointerUp(_e) {
 
 function setMode(mode) {
   state.mode = mode;
-  if (mode === 'draw') {
-    canvas.className = 'cursor-crosshair';
-  } else if (mode === 'place-opening') {
+  if (mode === 'draw' || mode === 'place-opening' || mode === 'draw-furniture') {
     canvas.className = 'cursor-crosshair';
   } else {
     canvas.className = 'cursor-default';
@@ -1490,12 +1819,14 @@ btnUndoVertex.addEventListener('click', () => {
 
 btnClearRoom.addEventListener('click', () => {
   if (!confirm('Clear the room and all furniture?')) return;
+  recordAction('room-clear');
   state.vertices  = [];
   state.roomClosed = false;
   state.openings  = [];
   state.furniture = [];
   state.selectedId = null;
   state.selectedOpeningIndex = -1;
+  state.selectedIds = new Set();
   state.resizing = false;
   state.dragging = false;
   state.dragOpeningIndex = -1;
@@ -1510,6 +1841,7 @@ btnMakeRect.addEventListener('click', () => {
   const w = parseFloat(rectWidthEl.value);
   const d = parseFloat(rectDepthEl.value);
   if (!w || !d || w < 10 || d < 10) return;
+  recordAction('room-edit');
   state.vertices   = [{ x:0, y:0 }, { x:w, y:0 }, { x:w, y:d }, { x:0, y:d }];
   state.roomClosed = true;
   state.openings   = [];
@@ -1679,24 +2011,53 @@ btnResetColor.addEventListener('click', () => onSelectedFurniture(f => {
 }));
 
 function rotateSelected() {
+  // Group rotate around centroid
+  if (state.selectedIds.size > 1) {
+    const items = state.furniture.filter(f => state.selectedIds.has(f.id));
+    if (items.length === 0) return;
+    recordAction('rotate');
+    const cx = items.reduce((s, f) => s + f.x + f.width / 2, 0) / items.length;
+    const cy = items.reduce((s, f) => s + f.y + f.depth / 2, 0) / items.length;
+    for (const f of items) {
+      const fcx = f.x + f.width / 2 - cx;
+      const fcy = f.y + f.depth / 2 - cy;
+      // 90° CW in screen space (y-down): (x,y) → (-y, x)
+      const newFcx = -fcy;
+      const newFcy = fcx;
+      f.x = cx + newFcx - f.width / 2;
+      f.y = cy + newFcy - f.depth / 2;
+      f.rotation = (f.rotation + 90) % 360;
+    }
+    draw();
+    return;
+  }
+
   if (!state.selectedId) return;
   const f = state.furniture.find(f => f.id === state.selectedId);
   if (!f) return;
-  // Rotate around centre without swapping dimensions
-  // The label is counter-rotated in drawFurniture to stay horizontal
+  recordAction('rotate');
   f.rotation = (f.rotation + 90) % 360;
   draw();
 }
 
 function deleteSelected() {
-  // Delete furniture
+  // Delete all multi-selected items
+  if (state.selectedIds.size > 1) {
+    recordAction('delete');
+    state.furniture = state.furniture.filter(f => !state.selectedIds.has(f.id));
+    deselectAll();
+    return;
+  }
+  // Delete single furniture
   if (state.selectedId) {
+    recordAction('delete');
     state.furniture = state.furniture.filter(f => f.id !== state.selectedId);
     deselectAll();
     return;
   }
   // Delete opening
   if (state.selectedOpeningIndex >= 0) {
+    recordAction('delete');
     state.openings.splice(state.selectedOpeningIndex, 1);
     state.selectedOpeningIndex = -1;
     sectionSelected.classList.add('hidden');
@@ -1713,6 +2074,12 @@ toggleMeasurements.addEventListener('change', () => {
   state.showMeasurements = toggleMeasurements.checked;
   draw();
 });
+if (toggleOverlap) {
+  toggleOverlap.addEventListener('change', () => {
+    state.showOverlap = toggleOverlap.checked;
+    draw();
+  });
+}
 gridSizeEl.addEventListener('input', () => {
   state.gridSize = parseFloat(gridSizeEl.value) || 10;
 });
@@ -1728,15 +2095,79 @@ document.getElementById('btn-add-custom').addEventListener('click', () => {
   const w     = parseFloat(document.getElementById('custom-width').value) || 100;
   const d     = parseFloat(document.getElementById('custom-depth').value) || 60;
   const cat   = document.getElementById('custom-category').value;
-  addFurnitureToRoom(cat, name, w, d);
+  const shapeEl = document.getElementById('custom-shape');
+  const shape = shapeEl ? shapeEl.value : 'rect';
+
+  if (shape === 'polygon') {
+    if (!state.roomClosed) { alert('Please draw and close a room first.'); return; }
+    state.drawingFurniturePoints = [];
+    setMode('draw-furniture');
+    return;
+  }
+
+  addFurnitureToRoom(cat, name, w, d, shape);
+});
+
+// Close polygon furniture drawing
+function closeFurniturePolygon() {
+  const pts = state.drawingFurniturePoints;
+  if (pts.length < 3) return;
+
+  // Compute bounding box of drawn points
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const bboxCx = (minX + maxX) / 2;
+  const bboxCy = (minY + maxY) / 2;
+  const width  = Math.max(1, maxX - minX);
+  const depth  = Math.max(1, maxY - minY);
+
+  // Center points around bbox center (local space)
+  const localPoints = pts.map(p => ({ x: p.x - bboxCx, y: p.y - bboxCy }));
+
+  recordAction('add-furniture');
+
+  const name = document.getElementById('custom-name')?.value.trim() || 'Custom';
+  const cat  = document.getElementById('custom-category')?.value || 'other';
+
+  const f = {
+    id: uid(), category: cat, name,
+    width, depth,
+    x: snap(bboxCx - width / 2, state.gridSize),
+    y: snap(bboxCy - depth / 2, state.gridSize),
+    rotation: 0,
+    shape: 'polygon',
+    points: localPoints,
+  };
+
+  state.furniture.push(f);
+  state.drawingFurniturePoints = [];
+  setMode('normal');
+  selectFurniture(f.id);
+  draw();
+}
+
+// Double-click closes polygon furniture drawing
+canvas.addEventListener('dblclick', () => {
+  if (state.mode === 'draw-furniture' && state.drawingFurniturePoints.length >= 3) {
+    closeFurniturePolygon();
+  }
 });
 
 // Keyboard
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+  // Undo / Redo
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+
   if (e.key === 'r' || e.key === 'R') rotateSelected();
   if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
   if (e.key === 'Escape') {
+    if (state.mode === 'draw-furniture') {
+      state.drawingFurniturePoints = [];
+    }
     deselectAll();
     setMode(state.roomClosed ? 'normal' : 'draw');
   }
@@ -1749,14 +2180,21 @@ document.addEventListener('keydown', e => {
 
   if (state.selectedId) {
     e.preventDefault();
-    const f = state.furniture.find(f => f.id === state.selectedId);
-    if (!f) return;
-    if (e.key === 'ArrowLeft')  f.x -= step;
-    if (e.key === 'ArrowRight') f.x += step;
-    if (e.key === 'ArrowUp')    f.y -= step;
-    if (e.key === 'ArrowDown')  f.y += step;
-    selectedXInput.value = Math.round(f.x);
-    selectedYInput.value = Math.round(f.y);
+    const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+    const dy = e.key === 'ArrowUp'   ? -step : e.key === 'ArrowDown'  ? step : 0;
+    recordAction('move-key');
+    if (state.selectedIds.size > 1) {
+      // Move entire group
+      for (const fi of state.furniture) {
+        if (state.selectedIds.has(fi.id)) { fi.x += dx; fi.y += dy; }
+      }
+    } else {
+      const f = state.furniture.find(f => f.id === state.selectedId);
+      if (!f) return;
+      f.x += dx; f.y += dy;
+      selectedXInput.value = Math.round(f.x);
+      selectedYInput.value = Math.round(f.y);
+    }
     draw();
     return;
   }
@@ -1768,9 +2206,7 @@ document.addEventListener('keydown', e => {
     if (!wall) return;
     const dx = wall.b.x - wall.a.x, dy = wall.b.y - wall.a.y;
     const wallLen = Math.sqrt(dx * dx + dy * dy);
-    // Determine which arrow moves along vs. across the wall
-    const angle = Math.atan2(dy, dx); // wall direction in radians
-    // Project arrow direction onto wall unit vector
+    const angle = Math.atan2(dy, dx);
     const arrows = {
       ArrowLeft:  { x: -1, y:  0 },
       ArrowRight: { x:  1, y:  0 },
@@ -1780,7 +2216,7 @@ document.addEventListener('keydown', e => {
     const dir = arrows[e.key];
     const along = dir.x * Math.cos(angle) + dir.y * Math.sin(angle);
     if (Math.abs(along) > 0.5) {
-      // Arrow is mostly along the wall — shift offset
+      recordAction('move-key');
       op.offset = Math.max(0, Math.min(wallLen - op.width, op.offset + Math.sign(along) * step));
       openingOffsetSelected.value = Math.round(op.offset);
     }
@@ -1828,7 +2264,11 @@ btnExport.addEventListener('click', () => {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = 'layout.json';
+  const filenameEl = document.getElementById('exportFilename');
+  const name = filenameEl
+    ? (filenameEl.value.trim() || 'room').replace(/[^a-z0-9_\-]/gi, '_')
+    : 'room';
+  a.download = `${name}.json`;
   a.click();
   URL.revokeObjectURL(url);
 });
@@ -1880,6 +2320,16 @@ function loadState(data) {
 // ============================================================
 // INIT
 // ============================================================
+
+// Undo/Redo buttons
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-redo').addEventListener('click', redo);
+
+// Multi-select group actions
+const btnRotateGroup = document.getElementById('btn-rotate-group');
+const btnDeleteGroup = document.getElementById('btn-delete-group');
+if (btnRotateGroup) btnRotateGroup.addEventListener('click', rotateSelected);
+if (btnDeleteGroup) btnDeleteGroup.addEventListener('click', deleteSelected);
 
 buildCatalog();
 resizeCanvas();

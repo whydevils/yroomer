@@ -22,7 +22,7 @@
     "@type": "WebApplication",
     "name": "yroomer",
     "description": "Free browser-based 2D room planner. Draw any room shape, place doors and windows, arrange furniture, and export your layout.",
-    "url": "https://whydevils.github.io/yroomer/",
+    "url": "https://yroomer.whydevils.com",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "Any",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -54,6 +54,15 @@
     <section class="sidebar-section section-selected-panel hidden" id="section-selected">
       <h2 class="section-title">Selected</h2>
       <p id="selected-label" class="selected-name">—</p>
+
+      <!-- Multi-select panel -->
+      <div id="multi-select-panel" class="hidden">
+        <p id="multi-select-count" class="selected-sub">— items selected</p>
+        <div class="action-row">
+          <button class="btn btn-outline btn-sm" id="btn-rotate-group">↻ Rotate group</button>
+          <button class="btn btn-outline btn-sm btn-danger" id="btn-delete-group">✕ Delete all</button>
+        </div>
+      </div>
 
       <!-- Furniture controls -->
       <div id="furniture-controls">
@@ -199,16 +208,27 @@
               <option value="other" selected>Other</option>
             </select>
           </label>
+          <label>Shape
+            <select id="custom-shape">
+              <option value="rect">Rectangle</option>
+              <option value="ellipse">Oval</option>
+              <option value="polygon">Polygon (draw)</option>
+            </select>
+          </label>
           <button class="btn btn-primary btn-sm" id="btn-add-custom">Add to room</button>
         </div>
       </details>
       </details>
     </section>
 
-    <!-- SETTINGS -->
+    <!-- CONTROLS -->
     <section class="sidebar-section" id="section-settings">
       <details class="section-details">
-      <summary class="section-title">Settings</summary>
+      <summary class="section-title">Controls</summary>
+      <div class="action-row" style="margin-top: 4px; margin-bottom: 4px;">
+        <button class="btn btn-outline btn-sm" id="btn-undo" disabled title="Undo (Ctrl+Z)">↩ Undo</button>
+        <button class="btn btn-outline btn-sm" id="btn-redo" disabled title="Redo (Ctrl+Y)">↪ Redo</button>
+      </div>
       <label class="toggle-label">
         <span>Snap to grid</span>
         <label class="toggle">
@@ -220,6 +240,13 @@
         <span>Show measurements</span>
         <label class="toggle">
           <input type="checkbox" id="toggle-measurements" checked />
+          <span class="toggle-track"></span>
+        </label>
+      </label>
+      <label class="toggle-label">
+        <span>Overlap detection</span>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-overlap" checked />
           <span class="toggle-track"></span>
         </label>
       </label>
@@ -236,12 +263,18 @@
     <section class="sidebar-section" id="section-io">
       <details class="section-details">
         <summary class="section-title">Export / Import</summary>
-        <div class="action-col" style="margin-top: 8px;">
-          <button class="btn btn-primary btn-sm" id="btn-export">↓ Export JSON</button>
-          <label class="btn btn-outline btn-sm file-btn">
-            ↑ Import JSON
-            <input type="file" id="import-file" accept=".json" class="hidden" />
-          </label>
+        <div style="margin-top: 8px;">
+          <div class="export-row">
+            <input type="text" id="exportFilename" value="room" placeholder="room" />
+            <span class="filename-ext">.json</span>
+          </div>
+          <div class="action-col">
+            <button class="btn btn-primary btn-sm" id="btn-export">↓ Export JSON</button>
+            <label class="btn btn-outline btn-sm file-btn">
+              ↑ Import JSON
+              <input type="file" id="import-file" accept=".json" class="hidden" />
+            </label>
+          </div>
         </div>
       </details>
       <p class="io-hint">Save your layout</p>
