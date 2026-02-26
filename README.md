@@ -1,4 +1,4 @@
-# yroomer
+# roomer
 
 A lightweight, browser-based 2D room furniture planner. No backend, no build step — just open `index.html`.
 
@@ -19,11 +19,13 @@ A lightweight, browser-based 2D room furniture planner. No backend, no build ste
 ### Furniture
 - Five categories (Bed, Seating, Table, Storage, Other), each with a distinct color
 - Built-in catalog of common items; add fully custom pieces with any name, size, and category
+- **Custom shapes**: rectangle, oval, or freehand polygon (click to place vertices, close to finish)
 - Drag to move (mouse + touch), **edge handles** to resize in place
 - Rotate in 90° steps — labels stay upright regardless of rotation
+- **Multi-select**: Shift+click to group items; drag, rotate, or delete the whole group at once
 - Per-piece custom color with a reset-to-category button
 - Selection panel: edit name, dimensions, position, and category
-- Overlap detection highlights conflicting pieces
+- Optional overlap detection highlights conflicting pieces
 
 ### Canvas
 - Zoom (scroll wheel / pinch) and pan (drag empty space)
@@ -36,8 +38,12 @@ A lightweight, browser-based 2D room furniture planner. No backend, no build ste
 - Arrow keys nudge the selected item by one grid step
 
 ### Export / Import
-- **Export** saves the current layout as `layout.json`
+- **Export** saves the current layout as JSON with a custom filename
 - **Import** restores a previously exported layout
+
+### Undo / Redo
+- Full undo/redo history (up to 50 steps)
+- Rapid consecutive moves are grouped into a single undo step
 
 ## Keyboard Shortcuts
 
@@ -45,7 +51,9 @@ A lightweight, browser-based 2D room furniture planner. No backend, no build ste
 |---|---|
 | `R` | Rotate selected furniture 90° |
 | `Del` / `Backspace` | Delete selected item |
-| `↑ ↓ ← →` | Move selected item by one grid step |
+| `↑ ↓ ← →` | Move selected item(s) by one grid step |
+| `Shift`+click | Add item to group selection |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / Redo |
 | `Esc` | Deselect / exit placement mode |
 | Scroll | Zoom in / out |
 | Drag (empty space) | Pan |

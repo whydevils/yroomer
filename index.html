@@ -3,26 +3,26 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>yroomer</title>
-  <meta name="description" content="yroomer is a free, browser-based 2D room planner. Draw any room shape, place doors and windows, arrange furniture, and export your layout — no sign-up, no install." />
+  <title>roomer</title>
+  <meta name="description" content="roomer is a free, browser-based 2D room planner. Draw any room shape, place doors and windows, arrange furniture, and export your layout — no sign-up, no install." />
 
   <!-- Open Graph -->
   <meta property="og:type"        content="website" />
-  <meta property="og:title"       content="yroomer" />
+  <meta property="og:title"       content="roomer" />
   <meta property="og:description" content="Free browser-based 2D room planner. Draw rooms, place furniture, export layouts — no install required." />
-  <meta property="og:url"         content="https://yroomer.whydevils.com/" />
+  <meta property="og:url"         content="https://roomer.whydevils.com/" />
 
 
-  <link rel="canonical" href="https://yroomer.whydevils.com/" />
+  <link rel="canonical" href="https://roomer.whydevils.com/" />
 
   <!-- Structured data -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    "name": "yroomer",
+    "name": "roomer",
     "description": "Free browser-based 2D room planner. Draw any room shape, place doors and windows, arrange furniture, and export your layout.",
-    "url": "https://yroomer.whydevils.com",
+    "url": "https://roomer.whydevils.com",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "Any",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -43,7 +43,7 @@
       <div class="logo-group">
         <img src="favicon.svg" class="logo-icon" alt="" />
         <div class="logo-text">
-          <span class="logo">yroomer</span>
+          <span class="logo">roomer</span>
           <span class="logo-sub">plan your room :)</span>
         </div>
       </div>
@@ -281,7 +281,7 @@
     </section>
     <!-- SIDEBAR FOOTER -->
     <footer class="sidebar-footer">
-      <button class="btn-info" id="btn-about" title="About yroomer">
+      <button class="btn-info" id="btn-about" title="About roomer">
         <span class="btn-info-icon">i</span>
         About
       </button>
@@ -289,13 +289,13 @@
   </aside>
 
   <!-- ABOUT OVERLAY -->
-  <div class="about-overlay hidden" id="about-overlay" role="dialog" aria-modal="true" aria-label="About yroomer">
+  <div class="about-overlay hidden" id="about-overlay" role="dialog" aria-modal="true" aria-label="About roomer">
     <div class="about-card">
       <button class="about-close" id="btn-about-close" aria-label="Close">✕</button>
 
       <div class="about-logo">
         <img src="favicon.svg" alt="" class="about-logo-icon" />
-        <span class="about-logo-name">yroomer</span>
+        <span class="about-logo-name">roomer</span>
       </div>
       <p class="about-tagline">A lightweight, browser-based room planner.</p>
 
@@ -303,7 +303,7 @@
         <h3>How to use</h3>
         <ol class="about-steps">
           <li><strong>Create a room</strong> — use the <em>Rectangle</em> tab for a quick room, or <em>Draw</em> to click-place vertices for any shape. Close the polygon by clicking the first vertex.</li>
-          <li><strong>Add furniture</strong> — click any item in the Furniture catalog. Drag it to position, use the edge handles to resize, or press <kbd>R</kbd> to rotate.</li>
+          <li><strong>Add furniture</strong> — click any item in the Furniture catalog. Drag to position, use the edge handles to resize, or press <kbd>R</kbd> to rotate. The catalog includes oval and round shapes; you can also draw a custom polygon via <em>Add custom piece → Shape: Polygon</em>.</li>
           <li><strong>Doors &amp; windows</strong> — arm <em>+ Door</em> or <em>+ Window</em>, then click on a wall. Click the placed opening to select and adjust it; drag to reposition it.</li>
           <li><strong>Save your work</strong> — export the layout as JSON via <em>Export / Import</em>, and reload it later with Import.</li>
         </ol>
@@ -315,6 +315,8 @@
           <div><dt><kbd>R</kbd></dt><dd>Rotate selected furniture 90°</dd></div>
           <div><dt><kbd>Del</kbd> / <kbd>⌫</kbd></dt><dd>Delete selected item</dd></div>
           <div><dt><kbd>↑ ↓ ← →</kbd></dt><dd>Move selected item (one grid step)</dd></div>
+          <div><dt><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd></dt><dd>Undo / Redo</dd></div>
+          <div><dt><kbd>Shift</kbd>+click</dt><dd>Add item to group selection</dd></div>
           <div><dt><kbd>Esc</kbd></dt><dd>Deselect / cancel placement mode</dd></div>
           <div><dt>Scroll</dt><dd>Zoom in / out</dd></div>
           <div><dt>Right-drag</dt><dd>Pan the canvas</dd></div>
@@ -323,7 +325,7 @@
 
       <section class="about-section">
         <h3>Technology</h3>
-        <p>yroomer runs <strong>entirely in your browser</strong> — no server, no account, no data ever leaves your device. It is built with plain HTML, CSS, and vanilla JavaScript; no frameworks or build tools. The canvas is rendered with the HTML5 Canvas 2D API. It works offline once loaded.</p>
+        <p>roomer runs <strong>entirely in your browser</strong> — no server, no account, no data ever leaves your device. It is built with plain HTML, CSS, and vanilla JavaScript; no frameworks or build tools. The canvas is rendered with the HTML5 Canvas 2D API. It works offline once loaded.</p>
       </section>
 
       <section class="about-section about-meta">
