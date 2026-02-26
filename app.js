@@ -175,6 +175,7 @@ const furnitureCatalog = document.getElementById('furniture-catalog');
 const sidebar = document.getElementById('sidebar');
 const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
 const btnShowSidebar = document.getElementById('btn-show-sidebar');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 
 // ============================================================
 // UTILS
@@ -1076,9 +1077,55 @@ function getCanvasPos(e) {
 canvas.addEventListener('mousemove', onPointerMove);
 canvas.addEventListener('mousedown', onPointerDown);
 canvas.addEventListener('mouseup',   onPointerUp);
-canvas.addEventListener('touchmove', e => { e.preventDefault(); onPointerMove(e); }, { passive: false });
-canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(e); }, { passive: false });
-canvas.addEventListener('touchend',   e => { e.preventDefault(); onPointerUp(e); }, { passive: false });
+let lastTouchDist = null;
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+    onPointerUp(e); // cancel any in-progress single-finger action
+  } else {
+    lastTouchDist = null;
+    onPointerDown(e);
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (lastTouchDist !== null && dist > 0) {
+      const ratio = dist / lastTouchDist;
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, state.zoom * ratio));
+      const rect = canvas.getBoundingClientRect();
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+      state.viewX = midX - (midX - state.viewX) * (newZoom / state.zoom);
+      state.viewY = midY - (midY - state.viewY) * (newZoom / state.zoom);
+      state.zoom  = newZoom;
+      draw();
+    }
+    lastTouchDist = dist;
+  } else {
+    lastTouchDist = null;
+    onPointerMove(e);
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (e.touches.length < 2) lastTouchDist = null;
+  onPointerUp(e);
+}, { passive: false });
+
+canvas.addEventListener('touchcancel', e => {
+  lastTouchDist = null;
+  onPointerUp(e);
+}, { passive: false });
 
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
@@ -1837,24 +1884,54 @@ function loadState(data) {
 buildCatalog();
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
+window.addEventListener('resize', () => {
+  if (!isMobile()) {
+    sidebarBackdrop.classList.remove('visible');
+    document.body.classList.remove('sidebar-open');
+    if (sidebar.classList.contains('hidden')) {
+      btnShowSidebar.classList.remove('hidden');
+    } else {
+      btnShowSidebar.classList.add('hidden');
+    }
+  }
+});
 
 // Initial view centred
 state.viewX = canvas.width  / 2;
 state.viewY = canvas.height / 2;
 
+// Auto-hide sidebar on mobile so canvas gets full width
+if (isMobile()) {
+  hideSidebar();
+}
+
 // Wire up opening section to enter place-opening mode
 // (already done above via openingControls click)
 
 // Sidebar toggle
-btnToggleSidebar.addEventListener('click', () => {
-  sidebar.classList.add('hidden');
-  btnShowSidebar.classList.remove('hidden');
-});
+function isMobile() {
+  return window.innerWidth <= 640;
+}
 
-btnShowSidebar.addEventListener('click', () => {
+function showSidebar() {
   sidebar.classList.remove('hidden');
   btnShowSidebar.classList.add('hidden');
-});
+  if (isMobile()) {
+    sidebarBackdrop.classList.add('visible');
+    document.body.classList.add('sidebar-open');
+  }
+}
+
+function hideSidebar() {
+  sidebar.classList.add('hidden');
+  btnShowSidebar.classList.remove('hidden');
+  sidebarBackdrop.classList.remove('visible');
+  document.body.classList.remove('sidebar-open');
+}
+
+btnToggleSidebar.addEventListener('click', hideSidebar);
+btnShowSidebar.addEventListener('click', showSidebar);
+sidebarBackdrop.addEventListener('click', hideSidebar);
 
 // ============================================================
 // ABOUT OVERLAY

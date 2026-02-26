@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>yroomer</title>
   <meta name="description" content="yroomer is a free, browser-based 2D room planner. Draw any room shape, place doors and windows, arrange furniture, and export your layout — no sign-up, no install." />
 
@@ -311,6 +311,7 @@
 
   <!-- CANVAS AREA -->
   <main id="canvas-wrapper">
+    <div id="sidebar-backdrop" aria-hidden="true"></div>
     <button id="btn-show-sidebar" class="btn-show-sidebar hidden" title="Show sidebar">›</button>
     <canvas id="room-canvas"></canvas>
     <div id="canvas-hint" class="canvas-hint">Draw your room — click the sidebar "Room" section to start.</div>

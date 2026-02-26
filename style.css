@@ -869,3 +869,48 @@ kbd {
 
 /* ===== UTILITIES ===== */
 .hidden { display: none !important; }
+
+/* ===== MOBILE OVERLAY (≤ 640px) ===== */
+@media (max-width: 640px) {
+
+  /* Sidebar floats over the canvas (removed from flex layout) */
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    padding-bottom: env(safe-area-inset-bottom);
+    z-index: 200;
+  }
+
+  /* Canvas fills full viewport width */
+  #canvas-wrapper {
+    width: 100vw;
+    flex: none;
+  }
+
+  /* Backdrop: only visible on mobile when sidebar is open */
+  #sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--color-overlay);
+    z-index: 199;
+    animation: overlay-in 0.18s ease;
+  }
+
+  #sidebar-backdrop.visible {
+    display: block;
+  }
+
+  /* Show-sidebar button: account for status bar / notch */
+  #btn-show-sidebar {
+    display: flex !important;
+    top: max(20px, env(safe-area-inset-top));
+  }
+
+  /* Hide show-sidebar button when sidebar is open */
+  body.sidebar-open #btn-show-sidebar {
+    display: none !important;
+  }
+}
