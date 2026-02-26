@@ -12,6 +12,28 @@ const CATEGORIES = {
   other:    { label: 'Other',             color: '#9E9E9E' },
 };
 
+const COLORS = {
+  primary:        '#B5506B',  // --color-primary (vertex dots, selected stroke, scale bar, preview line)
+  firstVertex:    '#FF6B35',  // distinctive orange for first polygon vertex
+  wallStroke:     '#606060',  // closed wall segments
+  doorStop:       '#8A8078',  // thin stop lines at door jambs
+  openingDefault: '#888',     // unselected door/window stroke
+  windowBlue:     '#5B9BD5',  // unselected window stroke + label
+  overlapFill:    '#FFEBEE',  // furniture fill when overlapping
+  overlapBorder:  '#C62828',  // furniture border + text when overlapping
+  textDark:       '#1C1B1A',  // --color-on-surface (furniture labels, scale bar text)
+  textDim:        '#555',     // subdued dimension text on furniture
+  dimensionAnnot: '#605850',  // wall dimension annotation lines/text
+  roomFill:       'rgba(250, 250, 248, 0.2)',
+  scaleBarBg:     'rgba(255,255,255,0.85)',
+  measurementBg:  'rgba(255,252,247,0.95)',
+};
+
+const FONTS = {
+  body: "'Poppins', system-ui, sans-serif",  // matches --font-body in CSS
+  mono: "'DM Mono', monospace",               // matches --font-mono in CSS
+};
+
 const DEFAULT_FURNITURE = [
   { category: 'bed',      name: 'Double Bed',      width: 160, depth: 200 },
   { category: 'bed',      name: 'Single Bed',       width: 90,  depth: 200 },
@@ -38,6 +60,8 @@ const SCALE_DEFAULT = 4; // px per cm
 const CLOSE_RADIUS = 14; // px — click radius to close polygon
 const MIN_ZOOM = 0.02;
 const MAX_ZOOM = 5;
+const MIN_RESIZE_SIZE = 20; // cm — minimum furniture dimension when dragging resize handles
+const CENTER_PADDING  = 60; // px — canvas padding when fitting room to view
 
 // ============================================================
 // STATE
@@ -302,12 +326,43 @@ function closestWall(roomX, roomY) {
 }
 
 // ============================================================
+// GRID BACKGROUND
+// ============================================================
+
+function drawGrid() {
+  if (!state.gridEnabled) return;
+  const cellPx = state.gridSize * SCALE_DEFAULT * state.zoom;
+
+  // Keep doubling the visual step until dots are at least 24 px apart.
+  // Always a power-of-2 multiple of the base grid unit, so dots stay meaningful.
+  const MIN_DOT_SPACING = 20;
+  let step = cellPx;
+  while (step < MIN_DOT_SPACING) step *= 2;
+
+  const w = canvas.width, h = canvas.height;
+  const startX = ((state.viewX % step) + step) % step;
+  const startY = ((state.viewY % step) + step) % step;
+
+  ctx.save();
+  ctx.fillStyle = '#EAE3D9'; // --color-outline-variant
+  for (let x = startX; x < w; x += step) {
+    for (let y = startY; y < h; y += step) {
+      ctx.beginPath();
+      ctx.arc(x, y, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// ============================================================
 // DRAW
 // ============================================================
 
 function draw() {
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
+  drawGrid();
 
   // Cursor preview in draw mode — shown even before the first vertex is placed
   if (!state.roomClosed && state.mode === 'draw' && state._cursorRoom) {
@@ -333,7 +388,7 @@ function draw() {
 function drawRoom() {
   if (state.vertices.length < 2) {
     // Just dots
-    ctx.fillStyle = '#B5506B';
+    ctx.fillStyle = COLORS.primary;
     for (const v of state.vertices) {
       ctx.beginPath();
       ctx.arc(v.x, v.y, 4 / (state.zoom * SCALE_DEFAULT), 0, Math.PI * 2);
@@ -352,7 +407,7 @@ function drawRoom() {
   if (state.roomClosed) ctx.closePath();
 
   if (state.roomClosed) {
-    ctx.fillStyle = 'rgba(250, 250, 248, 0.2)';
+    ctx.fillStyle = COLORS.roomFill;
     ctx.fill();
   }
 
@@ -372,7 +427,7 @@ function drawRoom() {
     ctx.beginPath();
     ctx.moveTo(verts[0].x, verts[0].y);
     for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
-    ctx.strokeStyle = '#B5506B';
+    ctx.strokeStyle = COLORS.primary;
     ctx.lineWidth = wallW;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -385,7 +440,7 @@ function drawRoom() {
       const v = verts[i];
       ctx.beginPath();
       ctx.arc(v.x, v.y, 5 / (state.zoom * SCALE_DEFAULT), 0, Math.PI * 2);
-      ctx.fillStyle = i === 0 ? '#FF6B35' : '#B5506B';
+      ctx.fillStyle = i === 0 ? COLORS.firstVertex : COLORS.primary;
       ctx.fill();
     }
   } else {
@@ -396,9 +451,9 @@ function drawRoom() {
       const isDragging = i === state.dragVertexIndex;
       ctx.beginPath();
       ctx.arc(v.x, v.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = isDragging ? '#B5506B' : 'rgba(255,255,255,0.85)';
+      ctx.fillStyle = isDragging ? COLORS.primary : COLORS.scaleBarBg;
       ctx.fill();
-      ctx.strokeStyle = '#B5506B';
+      ctx.strokeStyle = COLORS.primary;
       ctx.lineWidth = (isDragging ? 2 : 1.5) / (state.zoom * SCALE_DEFAULT);
       ctx.stroke();
     }
@@ -441,7 +496,7 @@ function drawWallWithOpenings(a, b, openings, wallW, openingIndices = []) {
       ctx.beginPath();
       ctx.moveTo(p1.x, p1.y);
       ctx.lineTo(p2.x, p2.y);
-      ctx.strokeStyle = '#606060';
+      ctx.strokeStyle = COLORS.wallStroke;
       ctx.lineWidth = wallW;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -465,7 +520,7 @@ function drawWallWithOpenings(a, b, openings, wallW, openingIndices = []) {
       const anticlockwise = effectiveSide < 0;
 
       // Stop lines at both ends of the opening
-      ctx.strokeStyle = '#8A8078';
+      ctx.strokeStyle = COLORS.doorStop;
       ctx.lineWidth = wallW * 0.25;
       for (const pt of [p1, p2]) {
         ctx.beginPath();
@@ -478,7 +533,7 @@ function drawWallWithOpenings(a, b, openings, wallW, openingIndices = []) {
       ctx.beginPath();
       ctx.moveTo(hingePoint.x, hingePoint.y);
       ctx.lineTo(tipPoint.x, tipPoint.y);
-      ctx.strokeStyle = isSelected ? '#B5506B' : '#888';
+      ctx.strokeStyle = isSelected ? COLORS.primary : COLORS.openingDefault;
       ctx.lineWidth = wallW * 0.25;
       ctx.setLineDash([]);
       ctx.stroke();
@@ -486,7 +541,7 @@ function drawWallWithOpenings(a, b, openings, wallW, openingIndices = []) {
       // Swing arc (quarter circle) — always exactly PI/2, direction via anticlockwise flag
       ctx.beginPath();
       ctx.arc(hingePoint.x, hingePoint.y, radius, leafAngle, arcEndAngle, anticlockwise);
-      ctx.strokeStyle = isSelected ? '#B5506B' : '#888';
+      ctx.strokeStyle = isSelected ? COLORS.primary : COLORS.openingDefault;
       ctx.lineWidth = isSelected ? (wallW * 0.4) : (wallW * 0.2);
       ctx.setLineDash([4 / (state.zoom * SCALE_DEFAULT), 3 / (state.zoom * SCALE_DEFAULT)]);
       ctx.stroke();
@@ -498,7 +553,7 @@ function drawWallWithOpenings(a, b, openings, wallW, openingIndices = []) {
         ctx.beginPath();
         ctx.moveTo(p1.x + nx * inset * sign, p1.y + ny * inset * sign);
         ctx.lineTo(p2.x + nx * inset * sign, p2.y + ny * inset * sign);
-        ctx.strokeStyle = isSelected ? '#B5506B' : '#5B9BD5';
+        ctx.strokeStyle = isSelected ? COLORS.primary : COLORS.windowBlue;
         ctx.lineWidth = wallW * (isSelected ? 0.4 : 0.2);
         ctx.stroke();
       }
@@ -513,7 +568,7 @@ function drawWallWithOpenings(a, b, openings, wallW, openingIndices = []) {
         ctx.lineTo(p2.x + ux * m + nx * t, p2.y + uy * m + ny * t);
         ctx.lineTo(p1.x - ux * m + nx * t, p1.y - uy * m + ny * t);
         ctx.closePath();
-        ctx.strokeStyle = '#B5506B';
+        ctx.strokeStyle = COLORS.primary;
         ctx.lineWidth = wallW * 0.3;
         ctx.stroke();
       }
@@ -526,13 +581,13 @@ function drawWallWithOpenings(a, b, openings, wallW, openingIndices = []) {
       const midX = (p1.x + p2.x) / 2;
       const midY = (p1.y + p2.y) / 2;
       const label = `${Math.round(seg.op.width)}`;
-      ctx.font = `500 ${fs}px DM Mono, monospace`;
+      ctx.font = `500 ${fs}px ${FONTS.mono}`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       const off = wallW * 2;
       const lx = midX - nx * off;
       const ly = midY - ny * off;
-      ctx.fillStyle = seg.type === 'door' ? '#888' : '#5B9BD5';
+      ctx.fillStyle = seg.type === 'door' ? COLORS.openingDefault : COLORS.windowBlue;
       ctx.fillText(label, lx, ly);
     }
   }
@@ -562,14 +617,14 @@ function drawFurniture() {
     // Fill
     const cat = CATEGORIES[f.category] || CATEGORIES.other;
     const baseColor = f.color || cat.color;
-    ctx.fillStyle = overlap ? '#FFEBEE' : baseColor + 'CC';
+    ctx.fillStyle = overlap ? COLORS.overlapFill : baseColor + 'CC';
     roundRect(ctx, -hw, -hd, f.width, f.depth, r);
     ctx.fill();
 
     ctx.shadowColor = 'transparent';
 
     // Border
-    ctx.strokeStyle = overlap ? '#C62828' : (isSelected ? '#1C1B1A' : baseColor);
+    ctx.strokeStyle = overlap ? COLORS.overlapBorder : (isSelected ? COLORS.textDark : baseColor);
     ctx.lineWidth = (isSelected ? 2.5 : 1.5) / (state.zoom * SCALE_DEFAULT);
     roundRect(ctx, -hw, -hd, f.width, f.depth, r);
     ctx.stroke();
@@ -590,8 +645,8 @@ function drawFurniture() {
     else if (cosA < 1e-6) availW = f.depth;
     else                  availW = Math.min(hw / cosA, hd / sinA) * 2;
     const textMaxW = availW * 0.88; // slight inner margin
-    ctx.fillStyle = overlap ? '#C62828' : '#1C1B1A';
-    ctx.font = `500 ${fontSize}px 'DM Sans', sans-serif`;
+    ctx.fillStyle = overlap ? COLORS.overlapBorder : COLORS.textDark;
+    ctx.font = `500 ${fontSize}px ${FONTS.body}`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     const nameLines = wrapText(ctx, f.name, textMaxW);
@@ -606,8 +661,8 @@ function drawFurniture() {
     }
     if (hasDim) {
       yOff += dimSize * 0.1;
-      ctx.font = `400 ${dimSize}px 'DM Mono', monospace`;
-      ctx.fillStyle = overlap ? '#C62828' : '#555';
+      ctx.font = `400 ${dimSize}px ${FONTS.mono}`;
+      ctx.fillStyle = overlap ? COLORS.overlapBorder : COLORS.textDim;
       const fmt = v => parseFloat(v.toFixed(2));
       ctx.fillText(`${fmt(f.width)}×${fmt(f.depth)}`, 0, yOff);
     }
@@ -616,7 +671,7 @@ function drawFurniture() {
     // Resize handles (edge midpoints)
     if (isSelected) {
       const hSize = 6 / (state.zoom * SCALE_DEFAULT);
-      ctx.fillStyle = '#B5506B';
+      ctx.fillStyle = COLORS.primary;
       // East (right edge midpoint)
       ctx.beginPath();
       ctx.arc(hw, 0, hSize, 0, Math.PI * 2);
@@ -651,14 +706,14 @@ function drawScaleBar() {
   const y       = canvas.height - 24;
   const h       = 5;
 
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillStyle = COLORS.scaleBarBg;
   ctx.fillRect(x - 4, y - 10, barPx + 8, 20);
 
-  ctx.fillStyle   = '#B5506B';
+  ctx.fillStyle   = COLORS.primary;
   ctx.fillRect(x, y, barPx, h);
 
-  ctx.font        = '11px DM Sans, sans-serif';
-  ctx.fillStyle   = '#1C1B1A';
+  ctx.font        = `11px ${FONTS.body}`;
+  ctx.fillStyle   = COLORS.textDark;
   ctx.textAlign   = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillText(`${barCm} cm`, x + barPx / 2, y - 2);
@@ -677,7 +732,7 @@ function drawDrawingPreview() {
   // Snapped cursor dot
   ctx.beginPath();
   ctx.arc(cs.x, cs.y, 5, 0, Math.PI * 2);
-  ctx.fillStyle = '#B5506B';
+  ctx.fillStyle = COLORS.primary;
   ctx.fill();
 
   if (state.vertices.length === 0) {
@@ -690,7 +745,7 @@ function drawDrawingPreview() {
 
   // Preview line
   ctx.setLineDash([6, 4]);
-  ctx.strokeStyle = '#B5506B';
+  ctx.strokeStyle = COLORS.primary;
   ctx.lineWidth   = 2;
   ctx.beginPath();
   ctx.moveTo(ls.x, ls.y);
@@ -706,13 +761,13 @@ function drawDrawingPreview() {
       const mx = (ls.x + cs.x) / 2;
       const my = (ls.y + cs.y) / 2;
       const label = `${Math.round(dist)} cm`;
-      ctx.font = '600 11px DM Mono, monospace';
+      ctx.font = `600 11px ${FONTS.mono}`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       const tw = ctx.measureText(label).width;
-      ctx.fillStyle = 'rgba(255,252,247,0.95)';
+      ctx.fillStyle = COLORS.measurementBg;
       ctx.fillRect(mx - tw / 2 - 5, my - 9, tw + 10, 18);
-      ctx.fillStyle = '#B5506B';
+      ctx.fillStyle = COLORS.primary;
       ctx.fillText(label, mx, my);
     }
   }
@@ -738,8 +793,8 @@ function drawRoomDimensions() {
   ctx.save();
   ctx.lineWidth   = px;
   ctx.strokeStyle = 'rgba(140,130,120,0.7)';
-  ctx.fillStyle   = '#605850';
-  ctx.font        = `500 ${11 * px}px DM Mono, monospace`;
+  ctx.fillStyle   = COLORS.dimensionAnnot;
+  ctx.font        = `500 ${11 * px}px ${FONTS.mono}`;
 
   // Width annotation (above bounding box)
   if (W > 1) {
@@ -882,15 +937,7 @@ function selectFurniture(id) {
     selectedLabel.textContent = f.name;
     furnitureControls.classList.remove('hidden');
     openingControlsSelected.classList.add('hidden');
-    // Populate inputs
-    selectedNameInput.value = f.name;
-    selectedWInput.value = f.width;
-    selectedDInput.value = f.depth;
-    selectedXInput.value = Math.round(f.x);
-    selectedYInput.value = Math.round(f.y);
-    selectedCatInput.value = f.category;
-    const cat = CATEGORIES[f.category] || CATEGORIES.other;
-    selectedColorInput.value = f.color || cat.color;
+    populateFurnitureInputs(f);
   } else {
     sectionSelected.classList.add('hidden');
     state.selectedId = null;
@@ -1080,7 +1127,6 @@ function onPointerMove(e) {
       let newX = startData.x;
       let newY = startData.y;
 
-      const minSize = 20; // cm
       const cosR = Math.cos(rad);
       const sinR = Math.sin(rad);
 
@@ -1091,25 +1137,25 @@ function onPointerMove(e) {
       // to keep the anchored edge stationary.
       if (state.resizeHandle === 'e') {
         // west edge anchored — east edge moves
-        newWidth = Math.max(minSize, snap(startData.width + localDx, state.gridSize));
+        newWidth = Math.max(MIN_RESIZE_SIZE, snap(startData.width + localDx, state.gridSize));
         const dW = newWidth - startData.width;
         newX = startData.x + dW / 2 * (cosR - 1);
         newY = startData.y - dW / 2 * sinR;
       } else if (state.resizeHandle === 'w') {
         // east edge anchored — west edge moves
-        newWidth = Math.max(minSize, snap(startData.width - localDx, state.gridSize));
+        newWidth = Math.max(MIN_RESIZE_SIZE, snap(startData.width - localDx, state.gridSize));
         const dW = newWidth - startData.width;
         newX = startData.x - dW / 2 * (1 + cosR);
         newY = startData.y + dW / 2 * sinR;
       } else if (state.resizeHandle === 's') {
         // north edge anchored — south edge moves
-        newDepth = Math.max(minSize, snap(startData.depth + localDy, state.gridSize));
+        newDepth = Math.max(MIN_RESIZE_SIZE, snap(startData.depth + localDy, state.gridSize));
         const dD = newDepth - startData.depth;
         newX = startData.x + dD / 2 * sinR;
         newY = startData.y + dD / 2 * (cosR - 1);
       } else if (state.resizeHandle === 'n') {
         // south edge anchored — north edge moves
-        newDepth = Math.max(minSize, snap(startData.depth - localDy, state.gridSize));
+        newDepth = Math.max(MIN_RESIZE_SIZE, snap(startData.depth - localDy, state.gridSize));
         const dD = newDepth - startData.depth;
         newX = startData.x - dD / 2 * sinR;
         newY = startData.y - dD / 2 * (1 + cosR);
@@ -1154,7 +1200,7 @@ function onPointerMove(e) {
       if (wallLen > 0) {
         const ux = dx / wallLen, uy = dy / wallLen;
         const t = (room.x - wall.a.x) * ux + (room.y - wall.a.y) * uy;
-        let newOffset = t - state.dragOpeningOffsetDelta;
+        let newOffset = snap(t - state.dragOpeningOffsetDelta, state.gridSize);
         newOffset = Math.max(0, Math.min(wallLen - op.width, newOffset));
         op.offset = newOffset;
         if (state.selectedOpeningIndex === state.dragOpeningIndex) {
@@ -1259,7 +1305,7 @@ function onPointerDown(e) {
       state.openings.push({
         type:   state.openingType,
         wall:   closest.wallIndex,
-        offset: closest.offset - state.openingWidth / 2,
+        offset: snap(closest.offset - state.openingWidth / 2, state.gridSize),
         width:  state.openingWidth,
         flip: false,
         side: 1,
@@ -1516,7 +1562,26 @@ btnSwingDoor.addEventListener('click', () => {
 
 btnDeleteOpening.addEventListener('click', deleteSelected);
 
-// Furniture metadata editing
+// Furniture metadata editing helpers
+function onSelectedFurniture(callback) {
+  if (!state.selectedId) return;
+  const f = state.furniture.find(f => f.id === state.selectedId);
+  if (!f) return;
+  callback(f);
+  draw();
+}
+
+function populateFurnitureInputs(f) {
+  selectedNameInput.value   = f.name;
+  selectedWInput.value      = f.width;
+  selectedDInput.value      = f.depth;
+  selectedXInput.value      = Math.round(f.x);
+  selectedYInput.value      = Math.round(f.y);
+  selectedCatInput.value    = f.category;
+  const cat = CATEGORIES[f.category] || CATEGORIES.other;
+  selectedColorInput.value  = f.color || cat.color;
+}
+
 const selectedNameInput = document.getElementById('selected-name-input');
 const selectedWInput = document.getElementById('selected-w-input');
 const selectedDInput = document.getElementById('selected-d-input');
@@ -1526,95 +1591,45 @@ const selectedCatInput = document.getElementById('selected-cat-input');
 const selectedColorInput = document.getElementById('selected-color-input');
 const btnResetColor = document.getElementById('btn-reset-color');
 
-selectedNameInput.addEventListener('input', () => {
-  if (state.selectedId) {
-    const f = state.furniture.find(f => f.id === state.selectedId);
-    if (f) {
-      f.name = selectedNameInput.value.trim() || 'Unnamed';
-      selectedLabel.textContent = f.name;
-      draw();
-    }
-  }
-});
+selectedNameInput.addEventListener('input', () => onSelectedFurniture(f => {
+  f.name = selectedNameInput.value.trim() || 'Unnamed';
+  selectedLabel.textContent = f.name;
+}));
 
-selectedWInput.addEventListener('input', () => {
-  if (state.selectedId) {
-    const f = state.furniture.find(f => f.id === state.selectedId);
-    if (f) {
-      const w = parseFloat(selectedWInput.value) || f.width;
-      f.width = Math.max(10, Math.min(1000, w));
-      draw();
-    }
-  }
-});
+selectedWInput.addEventListener('input', () => onSelectedFurniture(f => {
+  f.width = Math.max(10, Math.min(1000, parseFloat(selectedWInput.value) || f.width));
+}));
 
-selectedDInput.addEventListener('input', () => {
-  if (state.selectedId) {
-    const f = state.furniture.find(f => f.id === state.selectedId);
-    if (f) {
-      const d = parseFloat(selectedDInput.value) || f.depth;
-      f.depth = Math.max(10, Math.min(1000, d));
-      draw();
-    }
-  }
-});
+selectedDInput.addEventListener('input', () => onSelectedFurniture(f => {
+  f.depth = Math.max(10, Math.min(1000, parseFloat(selectedDInput.value) || f.depth));
+}));
 
-selectedXInput.addEventListener('input', () => {
-  if (state.selectedId) {
-    const f = state.furniture.find(f => f.id === state.selectedId);
-    if (f) {
-      f.x = parseFloat(selectedXInput.value) || 0;
-      draw();
-    }
-  }
-});
+selectedXInput.addEventListener('input', () => onSelectedFurniture(f => {
+  f.x = parseFloat(selectedXInput.value) || 0;
+}));
 
-selectedYInput.addEventListener('input', () => {
-  if (state.selectedId) {
-    const f = state.furniture.find(f => f.id === state.selectedId);
-    if (f) {
-      f.y = parseFloat(selectedYInput.value) || 0;
-      draw();
-    }
-  }
-});
+selectedYInput.addEventListener('input', () => onSelectedFurniture(f => {
+  f.y = parseFloat(selectedYInput.value) || 0;
+}));
 
-selectedCatInput.addEventListener('change', () => {
-  if (state.selectedId) {
-    const f = state.furniture.find(f => f.id === state.selectedId);
-    if (f) {
-      f.category = selectedCatInput.value;
-      // Update color picker to show new category color if no custom color set
-      if (!f.color) {
-        const cat = CATEGORIES[f.category] || CATEGORIES.other;
-        selectedColorInput.value = cat.color;
-      }
-      draw();
-    }
+selectedCatInput.addEventListener('change', () => onSelectedFurniture(f => {
+  f.category = selectedCatInput.value;
+  // Update color picker to show new category color if no custom color set
+  if (!f.color) {
+    const cat = CATEGORIES[f.category] || CATEGORIES.other;
+    selectedColorInput.value = cat.color;
   }
-});
+}));
 
-selectedColorInput.addEventListener('input', () => {
-  if (state.selectedId) {
-    const f = state.furniture.find(f => f.id === state.selectedId);
-    if (f) {
-      f.color = selectedColorInput.value;
-      draw();
-    }
-  }
-});
+selectedColorInput.addEventListener('input', () => onSelectedFurniture(f => {
+  f.color = selectedColorInput.value;
+}));
 
-btnResetColor.addEventListener('click', () => {
-  if (state.selectedId) {
-    const f = state.furniture.find(f => f.id === state.selectedId);
-    if (f) {
-      f.color = null;
-      const cat = CATEGORIES[f.category] || CATEGORIES.other;
-      selectedColorInput.value = cat.color;
-      draw();
-    }
-  }
-});
+btnResetColor.addEventListener('click', () => onSelectedFurniture(f => {
+  f.color = null;
+  const cat = CATEGORIES[f.category] || CATEGORIES.other;
+  selectedColorInput.value = cat.color;
+}));
 
 function rotateSelected() {
   if (!state.selectedId) return;
@@ -1737,7 +1752,7 @@ function centerRoom() {
     minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x);
     minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
   }
-  const pad = 60;
+  const pad = CENTER_PADDING;
   const fitZoom = Math.min(
     (canvas.width  - pad * 2) / ((maxX - minX) * SCALE_DEFAULT),
     (canvas.height - pad * 2) / ((maxY - minY) * SCALE_DEFAULT),
