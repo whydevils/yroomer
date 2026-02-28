@@ -281,6 +281,21 @@ function snap(val, grid) {
   return Math.round(val / grid) * grid;
 }
 
+// Snap furniture position so the visual top-left corner lands on the grid,
+// accounting for the fact that at 90°/270° the visual bounding box is transposed.
+function snapFurnitureToGrid(f) {
+  const g = state.gridSize;
+  if (f.rotation % 180 !== 0) {
+    // At 90°/270° the visual top-left is shifted by (width-depth)/2 relative to stored f.x/f.y
+    const offset = (f.width - f.depth) / 2;
+    f.x = snap(f.x + offset, g) - offset;
+    f.y = snap(f.y - offset, g) + offset;
+  } else {
+    f.x = snap(f.x, g);
+    f.y = snap(f.y, g);
+  }
+}
+
 /** Convert screen px → room cm */
 function screenToRoom(sx, sy) {
   return {
@@ -1466,8 +1481,9 @@ function onPointerMove(e) {
     for (const item of state._multiDragStart.items) {
       const fi = state.furniture.find(f => f.id === item.id);
       if (fi) {
-        fi.x = snap(item.x + dx, state.gridSize);
-        fi.y = snap(item.y + dy, state.gridSize);
+        fi.x = item.x + dx;
+        fi.y = item.y + dy;
+        snapFurnitureToGrid(fi);
       }
     }
     draw();
@@ -1478,14 +1494,11 @@ function onPointerMove(e) {
   if (state.dragging && state.dragFurnitureId) {
     const f = state.furniture.find(f => f.id === state.dragFurnitureId);
     if (f) {
-      let nx = room.x - state.dragOffsetX;
-      let ny = room.y - state.dragOffsetY;
-      // Snap the top-left corner to the grid.
+      f.x = room.x - state.dragOffsetX;
+      f.y = room.y - state.dragOffsetY;
+      // Snap the visual top-left corner to the grid, accounting for rotation.
       // This also corrects any off-grid position left by a resize operation.
-      nx = snap(nx, state.gridSize);
-      ny = snap(ny, state.gridSize);
-      f.x = nx;
-      f.y = ny;
+      snapFurnitureToGrid(f);
       selectedXInput.value = Math.round(f.x);
       selectedYInput.value = Math.round(f.y);
       draw();
@@ -2027,6 +2040,7 @@ function rotateSelected() {
       f.x = cx + newFcx - f.width / 2;
       f.y = cy + newFcy - f.depth / 2;
       f.rotation = (f.rotation + 90) % 360;
+      snapFurnitureToGrid(f);
     }
     draw();
     return;
@@ -2037,6 +2051,7 @@ function rotateSelected() {
   if (!f) return;
   recordAction('rotate');
   f.rotation = (f.rotation + 90) % 360;
+  snapFurnitureToGrid(f);
   draw();
 }
 
