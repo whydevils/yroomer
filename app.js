@@ -1369,7 +1369,7 @@ canvas.addEventListener('touchcancel', e => {
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
   const pos = getCanvasPos(e);
-  const zoomFactor = e.deltaY < 0 ? 1.1 : 0.91;
+  const zoomFactor = e.deltaY < 0 ? 1.05 : 0.952;
   const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, state.zoom * zoomFactor));
   // Zoom toward cursor
   state.viewX = pos.x - (pos.x - state.viewX) * (newZoom / state.zoom);
@@ -2178,6 +2178,7 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
 
   if (e.key === 'r' || e.key === 'R') rotateSelected();
+  if (e.key === '0') { e.preventDefault(); centerRoom(); draw(); return; }
   if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
   if (e.key === 'Escape') {
     if (state.mode === 'draw-furniture') {
