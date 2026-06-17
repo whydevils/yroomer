@@ -2267,8 +2267,8 @@ function centerRoom() {
 // EXPORT / IMPORT
 // ============================================================
 
-btnExport.addEventListener('click', () => {
-  const data = {
+function getExportData() {
+  return {
     room: {
       vertices: state.vertices.map(v => [v.x, v.y]),
       openings: state.openings,
@@ -2276,6 +2276,10 @@ btnExport.addEventListener('click', () => {
     furniture: state.furniture,
     grid: { size: state.gridSize, enabled: state.gridEnabled, showMeasurements: state.showMeasurements },
   };
+}
+
+btnExport.addEventListener('click', () => {
+  const data = getExportData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -2333,6 +2337,97 @@ function loadState(data) {
   draw();
 }
 
+// Compact positional encoding — removes JSON key names before compression.
+// Schema: [vertices, openings, furniture, grid]
+//   vertices:  [[x,y],...]
+//   openings:  [[typeChar, wall, offset, width, flip01, side],...]
+//   furniture: [[category, name, w, d, x, y, rot, shape, color],...]
+//     shape: 0 (rect) | "e" (ellipse) | [[x,y],...] (polygon points)
+//     color: custom hex string, or omitted when using the category default.
+//     Trailing default slots are dropped, so a plain rect is just 7 elements.
+//   grid:      [size, enabled01, showMeasurements01]
+const OPENING_TYPE_ENC = { door: 'd', window: 'w' };
+const OPENING_TYPE_DEC = { d: 'door', w: 'window' };
+
+function encodeCompact(data) {
+  const openings = data.room.openings.map(o => [
+    OPENING_TYPE_ENC[o.type] ?? o.type,
+    o.wall, o.offset, o.width, o.flip ? 1 : 0, o.side,
+  ]);
+  const furniture = data.furniture.map(f => {
+    const item = [f.category, f.name, f.width, f.depth, f.x, f.y, f.rotation];
+    let shape = 0;
+    if (f.shape === 'ellipse') shape = 'e';
+    else if (f.shape === 'polygon' && f.points) shape = f.points.map(p => [p.x, p.y]);
+    if (f.color) item.push(shape, f.color);
+    else if (shape) item.push(shape);
+    return item;
+  });
+  return JSON.stringify([
+    data.room.vertices,
+    openings,
+    furniture,
+    [data.grid.size, data.grid.enabled ? 1 : 0, data.grid.showMeasurements ? 1 : 0],
+  ]);
+}
+
+function decodeCompact(str) {
+  const [vertices, openings, furniture, grid] = JSON.parse(str);
+  return {
+    room: {
+      vertices,
+      openings: openings.map(([type, wall, offset, width, flip, side]) => ({
+        type: OPENING_TYPE_DEC[type] ?? type, wall, offset, width, flip: !!flip, side,
+      })),
+    },
+    furniture: furniture.map(([category, name, width, depth, x, y, rotation, shape, color]) => {
+      const f = { id: uid(), category, name, width, depth, x, y, rotation };
+      if (shape === 'e') f.shape = 'ellipse';
+      else if (Array.isArray(shape)) { f.shape = 'polygon'; f.points = shape.map(([px, py]) => ({ x: px, y: py })); }
+      if (color) f.color = color;
+      return f;
+    }),
+    grid: { size: grid[0], enabled: !!grid[1], showMeasurements: !!grid[2] },
+  };
+}
+
+async function compressToBase64url(str) {
+  const stream = new CompressionStream('deflate-raw');
+  const writer = stream.writable.getWriter();
+  writer.write(new TextEncoder().encode(str));
+  writer.close();
+  const buf = await new Response(stream.readable).arrayBuffer();
+  let binary = '';
+  for (const byte of new Uint8Array(buf)) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function decompressFromBase64url(b64url) {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(b64);
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  const stream = new DecompressionStream('deflate-raw');
+  const writer = stream.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  return new Response(stream.readable).text();
+}
+
+const btnShare = document.getElementById('btn-share');
+const btnShareLabel = btnShare.textContent;
+btnShare.addEventListener('click', async () => {
+  const encoded = await compressToBase64url(encodeCompact(getExportData()));
+  const url = `${location.origin}${location.pathname}#state=${encoded}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    btnShare.textContent = '✓ Copied to clipboard';
+    setTimeout(() => { btnShare.textContent = btnShareLabel; }, 2000);
+  } catch {
+    // Clipboard unavailable (insecure context, denied permission) — show the link instead.
+    prompt('Copy this share link:', url);
+  }
+});
+
 // ============================================================
 // INIT
 // ============================================================
@@ -2362,9 +2457,18 @@ window.addEventListener('resize', () => {
   }
 });
 
-// Initial view centred
-state.viewX = canvas.width  / 2;
-state.viewY = canvas.height / 2;
+// Initial view centred — or restored from URL hash if present
+(async function () {
+  const hash = location.hash;
+  if (hash.startsWith('#state=')) {
+    try {
+      loadState(decodeCompact(await decompressFromBase64url(hash.slice(7))));
+      return;
+    } catch { /* ignore malformed hash */ }
+  }
+  state.viewX = canvas.width  / 2;
+  state.viewY = canvas.height / 2;
+})();
 
 // Auto-hide sidebar on mobile so canvas gets full width
 if (isMobile()) {
