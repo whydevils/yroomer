@@ -216,6 +216,13 @@ function updateUndoRedoButtons() {
 
 const canvas = document.getElementById('room-canvas');
 const ctx = canvas.getContext('2d');
+// Device pixel ratio: the canvas backing store is sized at dpr × CSS pixels so
+// text/lines stay crisp on high-density (mobile/retina) displays. All drawing
+// math stays in CSS pixels; a base ctx transform of dpr handles the scaling.
+let dpr = 1;
+// Logical (CSS-pixel) canvas size — use these instead of canvas.width/height.
+function cw() { return canvas.width / dpr; }
+function ch() { return canvas.height / dpr; }
 const wrapper = document.getElementById('canvas-wrapper');
 const hint = document.getElementById('canvas-hint');
 
@@ -317,8 +324,13 @@ function scale(cm) {
 }
 
 function resizeCanvas() {
-  canvas.width  = wrapper.clientWidth;
-  canvas.height = wrapper.clientHeight;
+  dpr = window.devicePixelRatio || 1;
+  const cssW = wrapper.clientWidth;
+  const cssH = wrapper.clientHeight;
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  canvas.width  = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
   draw();
 }
 
@@ -467,7 +479,7 @@ function drawGrid() {
   let step = cellPx;
   while (step < MIN_DOT_SPACING) step *= 2;
 
-  const w = canvas.width, h = canvas.height;
+  const w = cw(), h = ch();
   const startX = ((state.viewX % step) + step) % step;
   const startY = ((state.viewY % step) + step) % step;
 
@@ -488,7 +500,10 @@ function drawGrid() {
 // ============================================================
 
 function draw() {
-  const w = canvas.width, h = canvas.height;
+  // Base transform maps CSS pixels → backing-store pixels so all drawing below
+  // can work in CSS pixels regardless of device pixel ratio.
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = cw(), h = ch();
   ctx.clearRect(0, 0, w, h);
   drawGrid();
 
@@ -842,14 +857,15 @@ function drawFurniture() {
 
 function drawScaleBar() {
   if (!state.roomClosed) return;
-  // Draw in canvas-space (not room-space), so we undo the transform temporarily
+  // Draw in canvas-space (not room-space), so we undo the world transform
+  // temporarily — back to the CSS-pixel base transform (dpr), not identity.
   ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const barCm   = 100;
   const barPx   = barCm * SCALE_DEFAULT * state.zoom;
   const x       = 20;
-  const y       = canvas.height - 24;
+  const y       = ch() - 24;
   const h       = 5;
 
   ctx.fillStyle = COLORS.scaleBarBg;
@@ -2253,14 +2269,14 @@ function centerRoom() {
   }
   const pad = CENTER_PADDING;
   const fitZoom = Math.min(
-    (canvas.width  - pad * 2) / ((maxX - minX) * SCALE_DEFAULT),
-    (canvas.height - pad * 2) / ((maxY - minY) * SCALE_DEFAULT),
+    (cw() - pad * 2) / ((maxX - minX) * SCALE_DEFAULT),
+    (ch() - pad * 2) / ((maxY - minY) * SCALE_DEFAULT),
   );
   state.zoom  = Math.max(MIN_ZOOM, fitZoom);
   const roomPxW = (maxX - minX) * SCALE_DEFAULT * state.zoom;
   const roomPxH = (maxY - minY) * SCALE_DEFAULT * state.zoom;
-  state.viewX = (canvas.width  - roomPxW) / 2 - minX * SCALE_DEFAULT * state.zoom;
-  state.viewY = (canvas.height - roomPxH) / 2 - minY * SCALE_DEFAULT * state.zoom;
+  state.viewX = (cw() - roomPxW) / 2 - minX * SCALE_DEFAULT * state.zoom;
+  state.viewY = (ch() - roomPxH) / 2 - minY * SCALE_DEFAULT * state.zoom;
 }
 
 // ============================================================
@@ -2466,8 +2482,8 @@ window.addEventListener('resize', () => {
       return;
     } catch { /* ignore malformed hash */ }
   }
-  state.viewX = canvas.width  / 2;
-  state.viewY = canvas.height / 2;
+  state.viewX = cw() / 2;
+  state.viewY = ch() / 2;
 })();
 
 // Auto-hide sidebar on mobile so canvas gets full width
